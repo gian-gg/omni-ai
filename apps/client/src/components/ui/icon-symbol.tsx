@@ -18,7 +18,15 @@ const MAPPING = {
   'paperplane.fill': 'send',
   'chevron.left.forwardslash.chevron.right': 'code',
   'chevron.right': 'chevron-right',
-} as IconMapping;
+  // Omni app icons
+  'message-square': 'chat-bubble-outline',
+  'layers-3': 'layers',
+  'person': 'person-outline',
+  'panel-left': 'menu',
+  'square-pen': 'edit',
+  'x-mark': 'close',
+  'plus': 'add',
+} as unknown as IconMapping;
 
 /**
  * An icon component that uses native SF Symbols on iOS, and Material Icons on Android and web.
