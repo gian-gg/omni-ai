@@ -5,8 +5,24 @@
 
 import { Platform } from 'react-native';
 
-const tintColorLight = '#0a7ea4';
+const tintColorLight = '#0B0B0D';
 const tintColorDark = '#fff';
+
+export const OmniColors = {
+  ink: '#0B0B0D',
+  charcoal: '#18181B',
+  slate: '#2A2A31',
+  fog: '#A1A1AA',
+  mist: '#D4D4D8',
+  cloud: '#F4F4F5',
+  paper: '#FAFAFA',
+};
+
+export const OmniFonts = {
+  heading: 'Syne_600SemiBold',
+  body: 'Manrope_400Regular',
+  bodySemiBold: 'Manrope_600SemiBold',
+};
 
 export const Colors = {
   light: {
