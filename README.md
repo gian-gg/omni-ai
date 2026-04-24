@@ -13,7 +13,7 @@ This repository is a **monorepo** containing the mobile client, backend API, and
 ```txt
 apps/
 ├── client/        # Expo + React Native mobile app
-└── server/        # FastAPI backend
+└── server/        # FastAPI + LangGraph backend
 
 packages/          # Shared code (types, schemas, AI configs — future)
 docs/              # Project-level documentation
