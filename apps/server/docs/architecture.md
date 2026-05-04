@@ -13,13 +13,15 @@ It is designed to:
 ## High-level Components
 
 - FastAPI — HTTP boundary and OpenAPI contracts
-- Service layer — AI extraction and business logic
+- Service layer — orchestration entrypoints and business logic
+- LangGraph — workflow graph for LLM-backed orchestration
 - Supabase — Auth and PostgreSQL storage
-- OpenRouter — LLM routing
+- OpenRouter — LLM routing and model access
 
 ## Principles
 
 - FastAPI routes are thin
 - Business logic lives in services
+- Graph nodes stay isolated from HTTP concerns
 - Schemas are contracts, not logic
 - APIs are versioned (`/api/v1`)

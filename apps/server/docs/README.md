@@ -4,7 +4,8 @@ This directory contains architectural and project-level documentation
 for the Omni backend service.
 
 These documents explain **why** the system is built the way it is.
-Implementation details live in the code.
+Implementation details live in the code under `apps/server/app`, including
+the versioned FastAPI routes and LangGraph orchestration runtime.
 
 ## Contents
 
