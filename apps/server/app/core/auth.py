@@ -8,8 +8,12 @@ import jwt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jwt import InvalidTokenError, PyJWKClient, PyJWKClientError
+from sqlalchemy.orm import Session
 
 from app.core.config import Settings, settings
+from app.db.session import get_db_session
+from app.models.user import User
+from app.services.user import upsert_user_from_claims
 
 SUPPORTED_SUPABASE_JWT_ALGORITHMS = ("RS256", "ES256", "EdDSA")
 bearer_scheme = HTTPBearer(auto_error=False)
@@ -27,6 +31,12 @@ class VerifiedTokenClaims:
     audience: tuple[str, ...]
     email: str | None
     role: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class AuthenticatedUser:
+    claims: VerifiedTokenClaims
+    user: User
 
 
 def extract_bearer_token(authorization_header: str | None) -> str:
@@ -130,3 +140,11 @@ def get_current_token_claims(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=str(error),
         ) from error
+
+
+def get_current_authenticated_user(
+    claims: Annotated[VerifiedTokenClaims, Depends(get_current_token_claims)],
+    db_session: Annotated[Session, Depends(get_db_session)],
+) -> AuthenticatedUser:
+    user = upsert_user_from_claims(db_session, claims)
+    return AuthenticatedUser(claims=claims, user=user)

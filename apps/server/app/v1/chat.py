@@ -1,7 +1,9 @@
 import logging
+from typing import Annotated
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
 
+from app.core.auth import AuthenticatedUser, get_current_authenticated_user
 from app.services.orchestrator import run_orchestrator
 from app.v1.schemas import ChatRequest, ChatResponse
 
@@ -10,9 +12,9 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-def _run_chat(prompt: str) -> ChatResponse:
+def _run_chat(prompt: str, authenticated_user: AuthenticatedUser) -> ChatResponse:
     try:
-        reply = run_orchestrator(prompt)
+        reply = run_orchestrator(prompt, user_id=authenticated_user.user.id)
     except ValueError as error:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -29,10 +31,20 @@ def _run_chat(prompt: str) -> ChatResponse:
 
 
 @router.post("/chat", response_model=ChatResponse, summary="Chat with the orchestrator")
-def chat(req: ChatRequest) -> ChatResponse:
-    return _run_chat(req.prompt)
+def chat(
+    req: ChatRequest,
+    authenticated_user: Annotated[
+        AuthenticatedUser, Depends(get_current_authenticated_user)
+    ],
+) -> ChatResponse:
+    return _run_chat(req.prompt, authenticated_user)
 
 
 @router.post("/agent", response_model=ChatResponse, summary="Run the agent orchestrator")
-def agent(req: ChatRequest) -> ChatResponse:
-    return _run_chat(req.prompt)
+def agent(
+    req: ChatRequest,
+    authenticated_user: Annotated[
+        AuthenticatedUser, Depends(get_current_authenticated_user)
+    ],
+) -> ChatResponse:
+    return _run_chat(req.prompt, authenticated_user)

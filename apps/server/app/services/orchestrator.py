@@ -19,12 +19,13 @@ def build_orchestrator():
 orchestrator_graph = build_orchestrator()
 
 
-def run_orchestrator(user_input: str) -> str:
+def run_orchestrator(user_input: str, user_id: str | None = None) -> str:
     clean_input = user_input.strip()
     if not clean_input:
         raise ValueError("user_input must not be empty")
 
     initial_state: OrchestratorState = {
+        "user_id": user_id,
         "user_input": clean_input,
         "intent": "llm",
         "response": "",

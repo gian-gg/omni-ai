@@ -7,6 +7,8 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     database_url: str | None = None
     supabase_url: str | None = None
+    supabase_publishable_key: str | None = None
+    supabase_anon_key: str | None = None
     supabase_issuer: str | None = None
     supabase_jwks_url: str | None = None
     supabase_audience: str | None = None
@@ -39,6 +41,22 @@ class Settings(BaseSettings):
             return self.supabase_jwks_url
 
         return f"{self.require_supabase_issuer()}/.well-known/jwks.json"
+
+    def require_supabase_url(self) -> str:
+        if not self.supabase_url:
+            raise ValueError("SUPABASE_URL is not configured.")
+
+        return self.supabase_url.rstrip("/")
+
+    def require_supabase_api_key(self) -> str:
+        if self.supabase_publishable_key:
+            return self.supabase_publishable_key
+        if self.supabase_anon_key:
+            return self.supabase_anon_key
+
+        raise ValueError(
+            "Neither SUPABASE_PUBLISHABLE_KEY nor SUPABASE_ANON_KEY is configured."
+        )
 
 
 settings = Settings()
