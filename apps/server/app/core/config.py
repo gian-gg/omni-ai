@@ -6,11 +6,9 @@ class Settings(BaseSettings):
     env: str = "dev"
     log_level: str = "INFO"
     llm_api_key: str | None = None
-    llm_base_url: str = "https://openrouter.ai/api/v1"
+    llm_base_url: str = "https://api.deepseek.com"
     system_prompt: str = "You are a helpful, concise assistant."
-    llm_model: str = "openai/gpt-4o-mini"
-    llm_site_url: str | None = None
-    llm_app_title: str | None = None
+    llm_model: str = "deepseek-v4-flash"
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

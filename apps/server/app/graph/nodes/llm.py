@@ -55,10 +55,6 @@ def llm_node(state: OrchestratorState) -> dict[str, str]:
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
     }
-    if settings.llm_site_url:
-        headers["HTTP-Referer"] = settings.llm_site_url
-    if settings.llm_app_title:
-        headers["X-OpenRouter-Title"] = settings.llm_app_title
 
     payload: dict[str, object] = {
         "model": settings.llm_model,
@@ -76,6 +72,9 @@ def llm_node(state: OrchestratorState) -> dict[str, str]:
             response_data = response.json()
     except httpx.HTTPError:
         logger.exception("LLM request failed.")
+        return _fallback_response(user_input)
+    except ValueError:
+        logger.exception("LLM response could not be decoded as JSON.")
         return _fallback_response(user_input)
 
     if not _is_string_key_dict(response_data):
