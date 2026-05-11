@@ -16,7 +16,8 @@ It is designed to:
 - Service layer — orchestration entrypoints and business logic
 - LangGraph — workflow graph for LLM-backed orchestration
 - Supabase — Auth and PostgreSQL storage
-- OpenRouter — LLM routing and model access
+- SQLAlchemy + Alembic — ORM models and schema migrations for app-owned tables
+- DeepSeek API — model access via the OpenAI-format chat completions API
 
 ## Principles
 
