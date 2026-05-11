@@ -51,6 +51,18 @@ class AuthPasswordRequest(BaseModel):
         return value
 
 
+class AuthRefreshRequest(BaseModel):
+    refresh_token: str = Field(..., min_length=1, max_length=4096)
+
+    @field_validator("refresh_token")
+    @classmethod
+    def validate_refresh_token(cls, value: str) -> str:
+        cleaned_value = value.strip()
+        if not cleaned_value:
+            raise ValueError("refresh_token must not be empty")
+        return cleaned_value
+
+
 class SupabaseAuthUserResponse(BaseModel):
     id: str
     email: str | None

@@ -5,10 +5,15 @@ from typing import Annotated
 from fastapi import APIRouter, Depends
 
 from app.core.auth import AuthenticatedUser, get_current_authenticated_user
-from app.services.supabase_auth import sign_in_with_password, sign_up_with_password
+from app.services.supabase_auth import (
+    refresh_session,
+    sign_in_with_password,
+    sign_up_with_password,
+)
 from app.v1.schemas import (
     AuthMeResponse,
     AuthPasswordRequest,
+    AuthRefreshRequest,
     AuthSessionResponse,
     AuthenticatedUserResponse,
 )
@@ -24,6 +29,11 @@ def sign_up(payload: AuthPasswordRequest) -> AuthSessionResponse:
 @router.post("/login", response_model=AuthSessionResponse, summary="Log in with email and password")
 def login(payload: AuthPasswordRequest) -> AuthSessionResponse:
     return sign_in_with_password(payload.email, payload.password)
+
+
+@router.post("/refresh", response_model=AuthSessionResponse, summary="Refresh an auth session")
+def refresh(payload: AuthRefreshRequest) -> AuthSessionResponse:
+    return refresh_session(payload.refresh_token)
 
 
 @router.get("/me", response_model=AuthMeResponse, summary="Get the authenticated user")

@@ -112,6 +112,31 @@ class AuthEndpointsTestCase(unittest.TestCase):
         self.assertEqual(response.json()["refresh_token"], "refresh-token")
         sign_in_mock.assert_called_once_with("user@example.com", "password123")
 
+    def test_refresh_proxies_supabase_auth_response(self) -> None:
+        refresh_response = AuthSessionResponse(
+            access_token="new-access-token",
+            refresh_token="new-refresh-token",
+            token_type="bearer",
+            expires_in=3600,
+            user=SupabaseAuthUserResponse(
+                id="supabase-user-123",
+                email="user@example.com",
+                role="authenticated",
+                aud="authenticated",
+                created_at=datetime.fromisoformat("2026-05-12T00:00:00+00:00"),
+            ),
+        )
+
+        with patch("app.v1.auth.refresh_session", return_value=refresh_response) as refresh_mock:
+            response = self.client.post(
+                "/api/v1/auth/refresh",
+                json={"refresh_token": "old-refresh-token"},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["access_token"], "new-access-token")
+        refresh_mock.assert_called_once_with("old-refresh-token")
+
     def test_me_bootstraps_and_returns_local_user(self) -> None:
         claims = VerifiedTokenClaims(
             subject="supabase-user-123",
