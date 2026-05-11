@@ -138,3 +138,12 @@ def sign_in_with_password(email: str, password: str) -> AuthSessionResponse:
             "password": password,
         },
     )
+
+
+def refresh_session(refresh_token: str) -> AuthSessionResponse:
+    return _post_to_supabase_auth(
+        "/auth/v1/token?grant_type=refresh_token",
+        {
+            "refresh_token": refresh_token,
+        },
+    )

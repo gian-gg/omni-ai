@@ -10,6 +10,7 @@ the versioned FastAPI routes and LangGraph orchestration runtime.
 ## Contents
 
 - architecture.md — High-level system architecture
+- auth.md — Auth endpoints, session handling, and client integration notes
 <!--- decisions.md — Architectural decisions and trade-offs
 - api.md — API philosophy and versioning
 - data-model.md — Core entities and relationships
