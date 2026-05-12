@@ -1,4 +1,5 @@
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import {
@@ -11,7 +12,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { OmniColors, OmniFonts } from '@/constants/theme';
+import { OmniColors, OmniFonts, OmniGradient } from '@/constants/theme';
 
 // ── Types ───────────────────────────────────────────────────────────
 
@@ -86,11 +87,16 @@ const TABS: { key: TabKey; label: string }[] = [
 
 function BalanceCard() {
   return (
-    <View style={styles.balanceCard}>
+    <LinearGradient
+      colors={OmniGradient}
+      start={{ x: 0, y: 0.5 }}
+      end={{ x: 1, y: 0.5 }}
+      style={styles.balanceCard}
+    >
       <Text style={styles.balanceLabel}>Current balance</Text>
       <Text style={styles.balanceAmount}>$12,480.90</Text>
       <Text style={styles.balanceDelta}>+4.2% vs last month</Text>
-    </View>
+    </LinearGradient>
   );
 }
 
@@ -279,7 +285,6 @@ const styles = StyleSheet.create({
   balanceCard: {
     borderRadius: 16,
     padding: 12,
-    backgroundColor: OmniColors.ink,
   },
   balanceLabel: {
     fontFamily: OmniFonts.bodySemiBold,

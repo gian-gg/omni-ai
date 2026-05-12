@@ -18,6 +18,9 @@ export const OmniColors = {
   paper: '#FAFAFA',
 };
 
+/** Dark gradient: from-zinc-950 via-zinc-900 to-zinc-700 */
+export const OmniGradient = ['#09090B', '#18181B', '#3F3F46'] as const;
+
 export const OmniFonts = {
   heading: 'Syne_600SemiBold',
   body: 'Manrope_400Regular',

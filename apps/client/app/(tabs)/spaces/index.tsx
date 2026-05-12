@@ -1,9 +1,10 @@
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { OmniColors, OmniFonts } from '@/constants/theme';
+import { OmniColors, OmniFonts, OmniGradient } from '@/constants/theme';
 
 type SpaceCard = {
   title: string;
@@ -36,6 +37,7 @@ const SPACES: SpaceCard[] = [
     description: 'Actionable tasks with due times and source context.',
     cta: 'Open to-do space',
     icon: 'check-circle-outline',
+    route: '/spaces/todos',
   },
   {
     title: 'Thoughts',
@@ -54,7 +56,12 @@ const STATS: StatRow[] = [
 
 function HeroBanner() {
   return (
-    <View style={styles.hero}>
+    <LinearGradient
+      colors={OmniGradient}
+      start={{ x: 0, y: 0.5 }}
+      end={{ x: 1, y: 0.5 }}
+      style={styles.hero}
+    >
       <Text style={styles.heroLabel}>Structured Memory</Text>
       <Text style={styles.heroTitle}>
         Pick a space to review and confirm records
@@ -62,7 +69,7 @@ function HeroBanner() {
       <Text style={styles.heroBody}>
         Transactions, to-dos, and thoughts stay linked to your original intent.
       </Text>
-    </View>
+    </LinearGradient>
   );
 }
 
@@ -118,14 +125,14 @@ function AnalyticsCard() {
         ))}
       </View>
 
-      <Pressable
-        style={({ pressed }) => [
-          styles.analyticsCta,
-          pressed && styles.analyticsCtaPressed,
-        ]}
+      <LinearGradient
+        colors={OmniGradient}
+        start={{ x: 0, y: 0.5 }}
+        end={{ x: 1, y: 0.5 }}
+        style={styles.analyticsCta}
       >
         <Text style={styles.analyticsCtaText}>View analytics and stats</Text>
-      </Pressable>
+      </LinearGradient>
     </View>
   );
 }
@@ -172,7 +179,6 @@ const styles = StyleSheet.create({
   hero: {
     borderRadius: 16,
     padding: 16,
-    backgroundColor: OmniColors.ink,
   },
   heroLabel: {
     fontFamily: OmniFonts.bodySemiBold,
@@ -304,11 +310,9 @@ const styles = StyleSheet.create({
     marginTop: 16,
     minHeight: 44,
     borderRadius: 12,
-    backgroundColor: OmniColors.ink,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  analyticsCtaPressed: { opacity: 0.85 },
   analyticsCtaText: {
     fontFamily: OmniFonts.bodySemiBold,
     fontSize: 14,
