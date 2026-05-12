@@ -1,4 +1,5 @@
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
+import { useRouter } from 'expo-router';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -10,6 +11,7 @@ type SpaceCard = {
   description: string;
   cta: string;
   icon: keyof typeof MaterialIcons.glyphMap;
+  route?: string;
 };
 
 type StatRow = {
@@ -26,6 +28,7 @@ const SPACES: SpaceCard[] = [
     description: 'Financial records extracted from chat and receipts.',
     cta: 'Open transaction space',
     icon: 'receipt-long',
+    route: '/spaces/transactions',
   },
   {
     title: 'To-Dos',
@@ -64,9 +67,11 @@ function HeroBanner() {
 }
 
 function SpaceCardItem({ space }: { space: SpaceCard }) {
+  const router = useRouter();
   return (
     <Pressable
       style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
+      onPress={() => space.route && router.push(space.route as any)}
     >
       <View style={styles.cardHeader}>
         <View style={styles.cardTitleRow}>
@@ -279,7 +284,7 @@ const styles = StyleSheet.create({
     color: '#52525B',
   },
   statValue: {
-    fontFamily: OmniFonts.bodySemiBold,
+    fontFamily: OmniFonts.data,
     fontSize: 12,
     color: OmniColors.charcoal,
   },

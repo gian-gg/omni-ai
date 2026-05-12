@@ -1,4 +1,8 @@
 import {
+  IBMPlexMono_600SemiBold,
+  useFonts as useIBMPlexMonoFonts,
+} from '@expo-google-fonts/ibm-plex-mono';
+import {
   Manrope_400Regular,
   Manrope_600SemiBold,
   useFonts as useManropeFonts,
@@ -29,8 +33,9 @@ export default function WelcomeScreen() {
 
   const [syneLoaded] = useSyneFonts({ Syne_600SemiBold });
   const [manropeLoaded] = useManropeFonts({ Manrope_400Regular, Manrope_600SemiBold });
+  const [ibmPlexMonoLoaded] = useIBMPlexMonoFonts({ IBMPlexMono_600SemiBold });
 
-  const fontsReady = syneLoaded && manropeLoaded;
+  const fontsReady = syneLoaded && manropeLoaded && ibmPlexMonoLoaded;
 
   if (!fontsReady) {
     return (

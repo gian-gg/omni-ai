@@ -22,6 +22,7 @@ export const OmniFonts = {
   heading: 'Syne_600SemiBold',
   body: 'Manrope_400Regular',
   bodySemiBold: 'Manrope_600SemiBold',
+  data: 'IBMPlexMono_600SemiBold',
 };
 
 export const Colors = {
