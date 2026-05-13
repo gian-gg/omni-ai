@@ -6,6 +6,7 @@ export default function SpacesLayout() {
       <Stack.Screen name="index" />
       <Stack.Screen name="transactions" />
       <Stack.Screen name="todos" />
+      <Stack.Screen name="thoughts" />
     </Stack>
   );
 }

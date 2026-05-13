@@ -45,6 +45,7 @@ const SPACES: SpaceCard[] = [
     description: 'Structured notes that can be promoted into tasks or plans.',
     cta: 'Open thought space',
     icon: 'lightbulb-outline',
+    route: '/spaces/thoughts',
   },
 ];
 
