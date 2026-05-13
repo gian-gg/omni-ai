@@ -5,16 +5,36 @@
 
 import { Platform } from 'react-native';
 
-const tintColorLight = '#0a7ea4';
+const tintColorLight = '#0B0B0D';
 const tintColorDark = '#fff';
+
+export const OmniColors = {
+  ink: '#0B0B0D',
+  charcoal: '#18181B',
+  slate: '#2A2A31',
+  fog: '#A1A1AA',
+  mist: '#D4D4D8',
+  cloud: '#F4F4F5',
+  paper: '#FAFAFA',
+};
+
+/** Dark gradient: from-zinc-950 via-zinc-900 to-zinc-700 */
+export const OmniGradient = ['#09090B', '#18181B', '#3F3F46'] as const;
+
+export const OmniFonts = {
+  heading: 'Syne_600SemiBold',
+  body: 'Manrope_400Regular',
+  bodySemiBold: 'Manrope_600SemiBold',
+  data: 'IBMPlexMono_600SemiBold',
+};
 
 export const Colors = {
   light: {
     text: '#11181C',
     background: '#fff',
     tint: tintColorLight,
-    icon: '#687076',
-    tabIconDefault: '#687076',
+    icon: '#A1A1AA',
+    tabIconDefault: '#A1A1AA',
     tabIconSelected: tintColorLight,
   },
   dark: {
