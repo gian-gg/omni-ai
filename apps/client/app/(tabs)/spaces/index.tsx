@@ -105,6 +105,7 @@ function ProgressBar({ progress }: { progress: number }) {
 }
 
 function AnalyticsCard() {
+  const router = useRouter();
   return (
     <View style={styles.card}>
       <View style={styles.cardHeader}>
@@ -126,19 +127,22 @@ function AnalyticsCard() {
         ))}
       </View>
 
-      <LinearGradient
-        colors={OmniGradient}
-        start={{ x: 0, y: 0.5 }}
-        end={{ x: 1, y: 0.5 }}
-        style={styles.analyticsCta}
-      >
-        <Text style={styles.analyticsCtaText}>View analytics and stats</Text>
-      </LinearGradient>
+      <Pressable onPress={() => router.push('/spaces/analytics' as any)}>
+        <LinearGradient
+          colors={OmniGradient}
+          start={{ x: 0, y: 0.5 }}
+          end={{ x: 1, y: 0.5 }}
+          style={styles.analyticsCta}
+        >
+          <Text style={styles.analyticsCtaText}>View analytics and stats</Text>
+        </LinearGradient>
+      </Pressable>
     </View>
   );
 }
 
 export default function SpacesScreen() {
+  const router = useRouter();
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <ScrollView
@@ -159,7 +163,7 @@ export default function SpacesScreen() {
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Analytics</Text>
-            <Pressable>
+            <Pressable onPress={() => router.push('/spaces/analytics' as any)}>
               <Text style={styles.sectionLink}>Open full stats</Text>
             </Pressable>
           </View>
