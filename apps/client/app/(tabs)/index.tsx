@@ -1,5 +1,7 @@
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useRef, useState } from 'react';
+import { OmniGradient } from '@/constants/theme';
 import {
   Animated,
   FlatList,
@@ -38,13 +40,18 @@ type StructuredRecord = {
 
 function HeroCard() {
   return (
-    <View style={styles.heroCard}>
+    <LinearGradient
+      colors={OmniGradient}
+      start={{ x: 0, y: 0.5 }}
+      end={{ x: 1, y: 0.5 }}
+      style={styles.heroCard}
+    >
       <Text style={styles.heroLabel}>Natural Language First</Text>
       <Text style={styles.heroTitle}>Tell Omni what you need in plain English</Text>
       <Text style={styles.heroBody}>
         I will parse intent, ask for missing details, and stage structured output for confirmation.
       </Text>
-    </View>
+    </LinearGradient>
   );
 }
 
@@ -68,11 +75,16 @@ function OmniMessage({ text, time }: { text: string; time: string }) {
 
 function UserMessage({ text, time }: { text: string; time: string }) {
   return (
-    <View style={styles.userBubble}>
+    <LinearGradient
+      colors={OmniGradient}
+      start={{ x: 0, y: 0.5 }}
+      end={{ x: 1, y: 0.5 }}
+      style={styles.userBubble}
+    >
       <Text style={styles.userSenderLabel}>You</Text>
       <Text style={styles.userText}>{text}</Text>
       <Text style={styles.userTimeText}>{time}</Text>
-    </View>
+    </LinearGradient>
   );
 }
 
@@ -101,10 +113,17 @@ function OmniStructuredMessage({
         </View>
       )}
       <View style={styles.actionRow}>
-        <Pressable style={styles.confirmBtn}>
-          <Text style={styles.confirmBtnText}>Confirm</Text>
+        <Pressable style={({ pressed }) => [pressed && { opacity: 0.8 }]}>
+          <LinearGradient
+            colors={OmniGradient}
+            start={{ x: 0, y: 0.5 }}
+            end={{ x: 1, y: 0.5 }}
+            style={styles.confirmBtn}
+          >
+            <Text style={styles.confirmBtnText}>Confirm</Text>
+          </LinearGradient>
         </Pressable>
-        <Pressable style={styles.editBtn}>
+        <Pressable style={({ pressed }) => [styles.editBtn, pressed && { opacity: 0.8 }]}>
           <Text style={styles.editBtnText}>Edit</Text>
         </Pressable>
       </View>
@@ -274,8 +293,15 @@ export default function ChatScreen() {
               onChangeText={setInputText}
               multiline
             />
-            <Pressable style={styles.sendBtn}>
-              <MaterialIcons name="send" size={18} color="#fff" />
+            <Pressable style={({ pressed }) => [pressed && { opacity: 0.8 }]}>
+              <LinearGradient
+                colors={OmniGradient}
+                start={{ x: 0, y: 0.5 }}
+                end={{ x: 1, y: 0.5 }}
+                style={styles.sendBtn}
+              >
+                <MaterialIcons name="send" size={18} color="#fff" />
+              </LinearGradient>
             </Pressable>
           </View>
           <ScrollView
@@ -333,7 +359,6 @@ const styles = StyleSheet.create({
 
   // Hero card
   heroCard: {
-    backgroundColor: '#0B0B0D',
     borderRadius: 16,
     padding: 16,
     marginBottom: 4,
@@ -408,7 +433,6 @@ const styles = StyleSheet.create({
   userBubble: {
     width: '85%',
     alignSelf: 'flex-end',
-    backgroundColor: '#0B0B0D',
     borderRadius: 16,
     borderBottomRightRadius: 4,
     padding: 14,
@@ -469,7 +493,6 @@ const styles = StyleSheet.create({
     marginTop: 10,
   },
   confirmBtn: {
-    backgroundColor: '#0B0B0D',
     borderRadius: 10,
     paddingHorizontal: 16,
     paddingVertical: 10,
@@ -538,7 +561,6 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 10,
-    backgroundColor: '#0B0B0D',
     alignItems: 'center',
     justifyContent: 'center',
   },
