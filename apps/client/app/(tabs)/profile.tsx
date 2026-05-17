@@ -204,7 +204,7 @@ const styles = StyleSheet.create({
 
   // Profile Card
   profileCard: {
-    minHeight: 220,
+    minHeight: 180,
     borderRadius: 16,
     borderWidth: 1,
     borderColor: '#27272a',
