@@ -12,7 +12,9 @@ import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Svg, Path } from 'react-native-svg';
+import { OmniGradient } from '@/constants/theme';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 function GoogleIcon() {
@@ -51,13 +53,18 @@ export default function WelcomeScreen() {
 
       {/* Hero */}
       <View style={styles.hero}>
-        <View style={styles.logoCard}>
+        <LinearGradient
+          colors={OmniGradient}
+          start={{ x: 0, y: 0.5 }}
+          end={{ x: 1, y: 0.5 }}
+          style={styles.logoCard}
+        >
           <Image
             source={require('@/assets/images/logo.png')}
             style={styles.logoImage}
             contentFit="contain"
           />
-        </View>
+        </LinearGradient>
 
         <View style={styles.headingGroup}>
           <Text style={styles.heading}>Omni</Text>
@@ -68,11 +75,18 @@ export default function WelcomeScreen() {
       {/* CTA */}
       <View style={styles.cta}>
         <Pressable
-          style={({ pressed }) => [styles.ctaButton, pressed && styles.ctaButtonPressed]}
+          style={({ pressed }) => [pressed && styles.ctaButtonPressed]}
           onPress={() => router.replace('/(tabs)')}
         >
-          <GoogleIcon />
-          <Text style={styles.ctaText}>Continue with Google</Text>
+          <LinearGradient
+            colors={OmniGradient}
+            start={{ x: 0, y: 0.5 }}
+            end={{ x: 1, y: 0.5 }}
+            style={styles.ctaButton}
+          >
+            <GoogleIcon />
+            <Text style={styles.ctaText}>Continue with Google</Text>
+          </LinearGradient>
         </Pressable>
         <Text style={styles.ctaCaption}>One-tap sign-in for Omni.</Text>
       </View>
@@ -105,7 +119,6 @@ const styles = StyleSheet.create({
     width: 128,
     height: 128,
     borderRadius: 30,
-    backgroundColor: '#0B0B0D',
     alignItems: 'center',
     justifyContent: 'center',
     shadowColor: '#000',
@@ -152,7 +165,6 @@ const styles = StyleSheet.create({
     gap: 12,
     minHeight: 52,
     borderRadius: 14,
-    backgroundColor: '#0B0B0D',
     paddingHorizontal: 16,
   },
   ctaButtonPressed: {
