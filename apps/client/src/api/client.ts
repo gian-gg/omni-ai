@@ -98,7 +98,13 @@ async function apiFetch<T>(
 // ── Chat ────────────────────────────────────────────────────────────
 
 export type ChatResponse = {
+  intent: 'finance' | 'todo' | 'note' | 'chat';
   response: string;
+  complete_response: string | null;
+  cancelled_response: string | null;
+  data: any | null;
+  tokens: number;
+  datetime: string;
 };
 
 /**
@@ -110,4 +116,55 @@ export async function sendMessage(prompt: string): Promise<ChatResponse> {
     method: 'POST',
     body: JSON.stringify({ prompt }),
   });
+}
+
+export async function createTransaction(payload: any): Promise<any> {
+  return apiFetch<any>('/transactions', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function createTodo(payload: any): Promise<any> {
+  return apiFetch<any>('/todos', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function createNote(payload: any): Promise<any> {
+  return apiFetch<any>('/notes', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+// ── Transactions ────────────────────────────────────────────────────
+
+export type TransactionItem = {
+  id: string;
+  type: 'income' | 'expense';
+  amount: number;
+  currency: string;
+  category: string | null;
+  description: string | null;
+  date: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type TransactionListResponse = {
+  items: TransactionItem[];
+  total: number;
+  limit: number;
+  offset: number;
+};
+
+export async function listTransactions(
+  limit = 50,
+  offset = 0,
+): Promise<TransactionListResponse> {
+  return apiFetch<TransactionListResponse>(
+    `/transactions?limit=${limit}&offset=${offset}`,
+  );
 }

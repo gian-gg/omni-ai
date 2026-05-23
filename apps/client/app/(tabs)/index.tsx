@@ -1,8 +1,13 @@
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useRef, useState, useEffect } from 'react';
 import { OmniGradient } from '@/constants/theme';
-import { sendMessage } from '@/api/client';
+import {
+  sendMessage,
+  createTransaction,
+  createTodo,
+  createNote,
+} from '@/api/client';
 import { MarkdownText } from '@/components/markdown-text';
 import {
   Animated,
@@ -23,7 +28,19 @@ type Message =
   | { id: string; type: 'divider'; label: string }
   | { id: string; type: 'omni'; text: string; time: string }
   | { id: string; type: 'user'; text: string; time: string }
-  | { id: string; type: 'omni-structured'; summary: string; records: StructuredRecord[]; time: string };
+  | {
+      id: string;
+      type: 'omni-structured';
+      summary: string;
+      rawIntent: 'finance' | 'todo' | 'note';
+      rawData: any;
+      completeResponse?: string | null;
+      cancelledResponse?: string | null;
+      isConfirmed?: boolean;
+      isCancelled?: boolean;
+      isEditing?: boolean;
+      time: string;
+    };
 
 type HistoryItem = {
   id: string;
@@ -39,6 +56,41 @@ type StructuredRecord = {
   title: string;   // primary descriptor
   subtitle: string; // secondary detail line
 };
+
+function getRecordsFromStructured(intent: 'finance' | 'todo' | 'note', data: any): StructuredRecord[] {
+  if (!data) return [];
+  switch (intent) {
+    case 'finance':
+      return [
+        {
+          id: 'finance-1',
+          label: 'Transaction',
+          title: `${data.type === 'expense' ? '-' : '+'}$${Number(data.amount || 0).toFixed(2)} ${data.description || ''}`,
+          subtitle: `Category: ${data.category || 'None'}`,
+        },
+      ];
+    case 'todo':
+      return [
+        {
+          id: 'todo-1',
+          label: 'Todo',
+          title: data.title || 'Untitled task',
+          subtitle: `${data.description ? 'Desc: ' + data.description : ''}${data.due_date ? ' | Due: ' + data.due_date : ''}`,
+        },
+      ];
+    case 'note':
+      return [
+        {
+          id: 'note-1',
+          label: 'Note',
+          title: data.title || 'Untitled note',
+          subtitle: `${data.content || ''}${data.tags && data.tags.length > 0 ? ' | Tags: ' + data.tags.join(', ') : ''}`,
+        },
+      ];
+    default:
+      return [];
+  }
+}
 
 function HeroCard() {
   return (
@@ -91,50 +143,308 @@ function UserMessage({ text, time }: { text: string; time: string }) {
 }
 
 function OmniStructuredMessage({
+  messageId,
   summary,
-  records,
+  rawIntent,
+  rawData,
+  completeResponse,
+  cancelledResponse,
+  isConfirmed,
+  isCancelled,
+  isEditing,
   time,
+  onConfirm,
+  onCancel,
+  onStartEdit,
+  onSaveEdit,
+  onCancelEdit,
 }: {
+  messageId: string;
   summary: string;
-  records: StructuredRecord[];
+  rawIntent: 'finance' | 'todo' | 'note';
+  rawData: any;
+  completeResponse?: string | null;
+  cancelledResponse?: string | null;
+  isConfirmed?: boolean;
+  isCancelled?: boolean;
+  isEditing?: boolean;
   time: string;
+  onConfirm: (id: string) => void;
+  onCancel: (id: string) => void;
+  onStartEdit: (id: string) => void;
+  onSaveEdit: (id: string, updated: any) => void;
+  onCancelEdit: (id: string) => void;
 }) {
+  const [editFields, setEditFields] = useState(rawData);
+
+  useEffect(() => {
+    setEditFields(rawData);
+  }, [rawData, isEditing]);
+
+  const handleSave = () => {
+    onSaveEdit(messageId, editFields);
+  };
+
+  const records = getRecordsFromStructured(rawIntent, rawData);
+
+  const getSubspaceName = () => {
+    if (rawIntent === 'finance') return 'Transactions';
+    if (rawIntent === 'todo') return 'To Do List';
+    if (rawIntent === 'note') return 'Thoughts';
+    return 'Spaces';
+  };
+
   return (
     <View style={styles.omniBubble}>
       <Text style={styles.senderLabel}>Omni</Text>
-      <MarkdownText style={styles.omniText}>{summary}</MarkdownText>
-      {records.length > 0 && (
-        <View style={styles.structuredCards}>
-          {records.map((record) => (
-            <View key={record.id} style={styles.miniCard}>
-              <Text style={styles.miniCardLabel}>{record.label}</Text>
-              <Text style={styles.miniCardTitle}>{record.title}</Text>
-              <Text style={styles.miniCardSub}>{record.subtitle}</Text>
+
+      {isConfirmed ? (
+        <View style={{ gap: 4, marginTop: 6 }}>
+          <MarkdownText style={styles.omniText}>
+            {completeResponse || `Successfully saved ${rawIntent}.`}
+          </MarkdownText>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 }}>
+            <MaterialIcons name="check-circle" size={14} color="#047857" style={{ marginTop: 1 }} />
+            <Text style={styles.statusText}>Saved to {getSubspaceName()}</Text>
+          </View>
+        </View>
+      ) : isCancelled ? (
+        <View style={{ gap: 4, marginTop: 6 }}>
+          <MarkdownText style={styles.omniText}>
+            {cancelledResponse || `Cancelled saving ${rawIntent}.`}
+          </MarkdownText>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 }}>
+            <MaterialIcons name="cancel" size={14} color="#71717A" style={{ marginTop: 1 }} />
+            <Text style={styles.statusTextCancelled}>Cancelled</Text>
+          </View>
+        </View>
+      ) : isEditing ? (
+        <View style={{ gap: 8, marginTop: 8 }}>
+          <Text style={{ fontFamily: 'Manrope_600SemiBold', fontSize: 13, color: '#3F3F46' }}>
+            Edit details:
+          </Text>
+
+          {rawIntent === 'finance' && (
+            <View style={{ gap: 6 }}>
+              <Text style={styles.editLabel}>Type</Text>
+              <View style={styles.typeToggleRow}>
+                <Pressable
+                  style={[
+                    styles.typeToggleBtn,
+                    editFields.type === 'expense' && styles.typeToggleBtnActive,
+                  ]}
+                  onPress={() => setEditFields({ ...editFields, type: 'expense' })}
+                >
+                  <Text
+                    style={[
+                      styles.typeToggleText,
+                      editFields.type === 'expense' && styles.typeToggleTextActive,
+                    ]}
+                  >
+                    Expense
+                  </Text>
+                </Pressable>
+                <Pressable
+                  style={[
+                    styles.typeToggleBtn,
+                    editFields.type === 'income' && styles.typeToggleBtnActive,
+                  ]}
+                  onPress={() => setEditFields({ ...editFields, type: 'income' })}
+                >
+                  <Text
+                    style={[
+                      styles.typeToggleText,
+                      editFields.type === 'income' && styles.typeToggleTextActive,
+                    ]}
+                  >
+                    Income
+                  </Text>
+                </Pressable>
+              </View>
+
+              <Text style={styles.editLabel}>Amount ($)</Text>
+              <TextInput
+                style={styles.editInput}
+                keyboardType="numeric"
+                value={String(editFields.amount || '')}
+                onChangeText={(val) => {
+                  const amt = parseFloat(val);
+                  setEditFields({ ...editFields, amount: isNaN(amt) ? 0 : amt });
+                }}
+              />
+
+              <Text style={styles.editLabel}>Description</Text>
+              <TextInput
+                style={styles.editInput}
+                value={editFields.description || ''}
+                onChangeText={(val) => setEditFields({ ...editFields, description: val })}
+              />
+
+              <Text style={styles.editLabel}>Category</Text>
+              <TextInput
+                style={styles.editInput}
+                value={editFields.category || ''}
+                onChangeText={(val) => setEditFields({ ...editFields, category: val })}
+              />
             </View>
-          ))}
+          )}
+
+          {rawIntent === 'todo' && (
+            <View style={{ gap: 6 }}>
+              <Text style={styles.editLabel}>Title</Text>
+              <TextInput
+                style={styles.editInput}
+                value={editFields.title || ''}
+                onChangeText={(val) => setEditFields({ ...editFields, title: val })}
+              />
+
+              <Text style={styles.editLabel}>Description</Text>
+              <TextInput
+                style={styles.editInput}
+                value={editFields.description || ''}
+                onChangeText={(val) => setEditFields({ ...editFields, description: val })}
+              />
+
+              <Text style={styles.editLabel}>Due Date</Text>
+              <TextInput
+                style={styles.editInput}
+                value={editFields.due_date || ''}
+                onChangeText={(val) => setEditFields({ ...editFields, due_date: val })}
+              />
+
+              <Text style={styles.editLabel}>Priority</Text>
+              <View style={styles.typeToggleRow}>
+                {['low', 'medium', 'high'].map((prio) => (
+                  <Pressable
+                    key={prio}
+                    style={[
+                      styles.typeToggleBtn,
+                      editFields.priority === prio && styles.typeToggleBtnActive,
+                    ]}
+                    onPress={() => setEditFields({ ...editFields, priority: prio })}
+                  >
+                    <Text
+                      style={[
+                        styles.typeToggleText,
+                        editFields.priority === prio && styles.typeToggleTextActive,
+                        { textTransform: 'capitalize' },
+                      ]}
+                    >
+                      {prio}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+            </View>
+          )}
+
+          {rawIntent === 'note' && (
+            <View style={{ gap: 6 }}>
+              <Text style={styles.editLabel}>Title</Text>
+              <TextInput
+                style={styles.editInput}
+                value={editFields.title || ''}
+                onChangeText={(val) => setEditFields({ ...editFields, title: val })}
+              />
+
+              <Text style={styles.editLabel}>Content</Text>
+              <TextInput
+                style={[styles.editInput, { minHeight: 60 }]}
+                multiline
+                value={editFields.content || ''}
+                onChangeText={(val) => setEditFields({ ...editFields, content: val })}
+              />
+
+              <Text style={styles.editLabel}>Tags (comma-separated)</Text>
+              <TextInput
+                style={styles.editInput}
+                value={Array.isArray(editFields.tags) ? editFields.tags.join(', ') : (editFields.tags || '')}
+                onChangeText={(val) =>
+                  setEditFields({
+                    ...editFields,
+                    tags: val.split(',').map((t) => t.trim()).filter(Boolean),
+                  })
+                }
+              />
+            </View>
+          )}
+
+          <View style={[styles.actionRow, { marginTop: 12 }]}>
+            <Pressable style={({ pressed }) => [pressed && { opacity: 0.8 }]} onPress={handleSave}>
+              <LinearGradient
+                colors={OmniGradient}
+                start={{ x: 0, y: 0.5 }}
+                end={{ x: 1, y: 0.5 }}
+                style={styles.confirmBtn}
+              >
+                <Text style={styles.confirmBtnText}>Save</Text>
+              </LinearGradient>
+            </Pressable>
+            <Pressable
+              style={({ pressed }) => [styles.editBtn, pressed && { opacity: 0.8 }]}
+              onPress={() => onCancelEdit(messageId)}
+            >
+              <Text style={styles.editBtnText}>Cancel</Text>
+            </Pressable>
+          </View>
+        </View>
+      ) : (
+        <View style={{ gap: 6 }}>
+          <MarkdownText style={styles.omniText}>{summary}</MarkdownText>
+          {records.length > 0 && (
+            <View style={styles.structuredCards}>
+              {records.map((record) => (
+                <View key={record.id} style={styles.miniCard}>
+                  <Text style={styles.miniCardLabel}>{record.label}</Text>
+                  <Text style={styles.miniCardTitle}>{record.title}</Text>
+                  <Text style={styles.miniCardSub}>{record.subtitle}</Text>
+                </View>
+              ))}
+            </View>
+          )}
+          <View style={styles.actionRow}>
+            <Pressable
+              style={({ pressed }) => [pressed && { opacity: 0.8 }]}
+              onPress={() => onConfirm(messageId)}
+            >
+              <LinearGradient
+                colors={OmniGradient}
+                start={{ x: 0, y: 0.5 }}
+                end={{ x: 1, y: 0.5 }}
+                style={styles.confirmBtn}
+              >
+                <Text style={styles.confirmBtnText}>Confirm</Text>
+              </LinearGradient>
+            </Pressable>
+            <Pressable
+              style={({ pressed }) => [styles.editBtn, pressed && { opacity: 0.8 }]}
+              onPress={() => onStartEdit(messageId)}
+            >
+              <Text style={styles.editBtnText}>Edit</Text>
+            </Pressable>
+            <Pressable
+              style={({ pressed }) => [styles.editBtn, pressed && { opacity: 0.8 }]}
+              onPress={() => onCancel(messageId)}
+            >
+              <Text style={styles.editBtnText}>Cancel</Text>
+            </Pressable>
+          </View>
         </View>
       )}
-      <View style={styles.actionRow}>
-        <Pressable style={({ pressed }) => [pressed && { opacity: 0.8 }]}>
-          <LinearGradient
-            colors={OmniGradient}
-            start={{ x: 0, y: 0.5 }}
-            end={{ x: 1, y: 0.5 }}
-            style={styles.confirmBtn}
-          >
-            <Text style={styles.confirmBtnText}>Confirm</Text>
-          </LinearGradient>
-        </Pressable>
-        <Pressable style={({ pressed }) => [styles.editBtn, pressed && { opacity: 0.8 }]}>
-          <Text style={styles.editBtnText}>Edit</Text>
-        </Pressable>
-      </View>
+
       <Text style={styles.timeText}>{time}</Text>
     </View>
   );
 }
 
-function renderMessage({ item }: { item: Message }) {
+function renderMessage(
+  item: Message,
+  onConfirm: (id: string) => void,
+  onCancel: (id: string) => void,
+  onStartEdit: (id: string) => void,
+  onSaveEdit: (id: string, updated: any) => void,
+  onCancelEdit: (id: string) => void,
+) {
   switch (item.type) {
     case 'divider':
       return <DateDivider label={item.label} />;
@@ -143,7 +453,25 @@ function renderMessage({ item }: { item: Message }) {
     case 'user':
       return <UserMessage text={item.text} time={item.time} />;
     case 'omni-structured':
-      return <OmniStructuredMessage summary={item.summary} records={item.records} time={item.time} />;
+      return (
+        <OmniStructuredMessage
+          messageId={item.id}
+          summary={item.summary}
+          rawIntent={item.rawIntent}
+          rawData={item.rawData}
+          completeResponse={item.completeResponse}
+          cancelledResponse={item.cancelledResponse}
+          isConfirmed={item.isConfirmed}
+          isCancelled={item.isCancelled}
+          isEditing={item.isEditing}
+          time={item.time}
+          onConfirm={onConfirm}
+          onCancel={onCancel}
+          onStartEdit={onStartEdit}
+          onSaveEdit={onSaveEdit}
+          onCancelEdit={onCancelEdit}
+        />
+      );
     default:
       return null;
   }
@@ -262,6 +590,74 @@ export default function ChatScreen() {
     ]).start(() => setDrawerOpen(false));
   };
 
+  const onConfirmStructured = useCallback(async (id: string) => {
+    let rawIntent: 'finance' | 'todo' | 'note' | null = null;
+    let rawData: any = null;
+
+    setMessages((prev) => {
+      const msg = prev.find((m) => m.id === id);
+      if (msg && msg.type === 'omni-structured') {
+        rawIntent = msg.rawIntent;
+        rawData = msg.rawData;
+      }
+      return prev;
+    });
+
+    if (!rawIntent || !rawData) return;
+
+    try {
+      if (rawIntent === 'finance') {
+        await createTransaction(rawData);
+      } else if (rawIntent === 'todo') {
+        await createTodo(rawData);
+      } else if (rawIntent === 'note') {
+        await createNote(rawData);
+      }
+
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === id
+            ? { ...m, isConfirmed: true, isEditing: false, isCancelled: false }
+            : m,
+        ),
+      );
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to save data to Spaces.');
+    }
+  }, []);
+
+  const onCancelStructured = useCallback((id: string) => {
+    setMessages((prev) =>
+      prev.map((m) =>
+        m.id === id
+          ? { ...m, isCancelled: true, isEditing: false, isConfirmed: false }
+          : m,
+      ),
+    );
+  }, []);
+
+  const onStartEditStructured = useCallback((id: string) => {
+    setMessages((prev) =>
+      prev.map((m) => (m.id === id ? { ...m, isEditing: true } : m)),
+    );
+  }, []);
+
+  const onSaveEditStructured = useCallback((id: string, updatedData: any) => {
+    setMessages((prev) =>
+      prev.map((m) =>
+        m.id === id
+          ? { ...m, rawData: updatedData, isEditing: false }
+          : m,
+      ),
+    );
+  }, []);
+
+  const onCancelEditStructured = useCallback((id: string) => {
+    setMessages((prev) =>
+      prev.map((m) => (m.id === id ? { ...m, isEditing: false } : m)),
+    );
+  }, []);
+
   const handleSend = useCallback(async () => {
     const text = inputText.trim();
     if (!text || isSending) return;
@@ -277,14 +673,31 @@ export default function ChatScreen() {
     setIsSending(true);
 
     try {
-      const { response } = await sendMessage(text);
-      const omniMsg: Message = {
-        id: `omni-${Date.now()}`,
-        type: 'omni',
-        text: response,
-        time: new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }),
-      };
-      setMessages((prev) => [...prev, omniMsg]);
+      const res = await sendMessage(text);
+      if ((res.intent === 'finance' || res.intent === 'todo' || res.intent === 'note') && res.data) {
+        const omniMsg: Message = {
+          id: `omni-${Date.now()}`,
+          type: 'omni-structured',
+          summary: res.response,
+          rawIntent: res.intent,
+          rawData: res.data,
+          completeResponse: res.complete_response,
+          cancelledResponse: res.cancelled_response,
+          isConfirmed: false,
+          isCancelled: false,
+          isEditing: false,
+          time: new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }),
+        };
+        setMessages((prev) => [...prev, omniMsg]);
+      } else {
+        const omniMsg: Message = {
+          id: `omni-${Date.now()}`,
+          type: 'omni',
+          text: res.response,
+          time: new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }),
+        };
+        setMessages((prev) => [...prev, omniMsg]);
+      }
     } catch (err) {
       const errMsg: Message = {
         id: `err-${Date.now()}`,
@@ -309,14 +722,23 @@ export default function ChatScreen() {
 
       <KeyboardAvoidingView
         style={styles.flex}
-        behavior="padding"
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         keyboardVerticalOffset={0}>
         {/* Message list */}
         <FlatList
           ref={flatListRef}
           data={messages}
           keyExtractor={(item) => item.id}
-          renderItem={renderMessage}
+          renderItem={({ item }) =>
+            renderMessage(
+              item,
+              onConfirmStructured,
+              onCancelStructured,
+              onStartEditStructured,
+              onSaveEditStructured,
+              onCancelEditStructured,
+            )
+          }
           ListHeaderComponent={<HeroCard />}
           contentContainerStyle={styles.messageList}
           showsVerticalScrollIndicator={false}
@@ -734,5 +1156,69 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: '#A1A1AA',
     marginTop: 6,
+  },
+
+  // Edit forms
+  editLabel: {
+    fontFamily: 'Manrope_600SemiBold',
+    fontSize: 11,
+    color: '#71717A',
+    marginTop: 8,
+    marginBottom: 4,
+    textTransform: 'uppercase',
+  },
+  editInput: {
+    fontFamily: 'Manrope_400Regular',
+    fontSize: 13,
+    borderWidth: 1,
+    borderColor: '#E4E4E7',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    backgroundColor: '#FAFAFA',
+    color: '#18181B',
+  },
+  editRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  editCol: {
+    flex: 1,
+  },
+  typeToggleRow: {
+    flexDirection: 'row',
+    borderWidth: 1,
+    borderColor: '#E4E4E7',
+    borderRadius: 8,
+    overflow: 'hidden',
+    marginBottom: 4,
+  },
+  typeToggleBtn: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 8,
+    backgroundColor: '#FAFAFA',
+  },
+  typeToggleBtnActive: {
+    backgroundColor: '#18181B',
+  },
+  typeToggleText: {
+    fontFamily: 'Manrope_600SemiBold',
+    fontSize: 12,
+    color: '#71717A',
+  },
+  typeToggleTextActive: {
+    color: '#fff',
+  },
+  statusText: {
+    fontFamily: 'Manrope_600SemiBold',
+    fontSize: 13,
+    color: '#047857',
+  },
+  statusTextCancelled: {
+    fontFamily: 'Manrope_600SemiBold',
+    fontSize: 13,
+    color: '#71717A',
   },
 });
