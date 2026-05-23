@@ -1,4 +1,5 @@
-from typing import Any, Literal, TypedDict
+from operator import add
+from typing import Annotated, Any, Literal, TypedDict
 
 
 IntentType = Literal["finance", "todo", "note", "chat"]
@@ -14,3 +15,4 @@ class OrchestratorState(TypedDict):
     complete_response: str | None
     cancelled_response: str | None
     data: dict[str, Any] | None
+    tokens: Annotated[int, add]

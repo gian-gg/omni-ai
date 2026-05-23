@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Any
 
 from langgraph.graph import END, START, StateGraph
@@ -54,6 +55,8 @@ class OrchestratorResult:
     complete_response: str | None
     cancelled_response: str | None
     data: dict[str, Any] | None
+    tokens: int
+    datetime: datetime
 
 
 def run_orchestrator(user_input: str, user_id: str | None = None) -> OrchestratorResult:
@@ -69,6 +72,7 @@ def run_orchestrator(user_input: str, user_id: str | None = None) -> Orchestrato
         "complete_response": None,
         "cancelled_response": None,
         "data": None,
+        "tokens": 0,
     }
     final_state = orchestrator_graph.invoke(initial_state)
     return OrchestratorResult(
@@ -77,4 +81,6 @@ def run_orchestrator(user_input: str, user_id: str | None = None) -> Orchestrato
         complete_response=final_state.get("complete_response"),
         cancelled_response=final_state.get("cancelled_response"),
         data=final_state.get("data"),
+        tokens=int(final_state.get("tokens", 0)),
+        datetime=datetime.now(UTC),
     )

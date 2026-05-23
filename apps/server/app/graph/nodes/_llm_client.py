@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+from dataclasses import dataclass
 from typing import Any, TypeGuard
 
 import httpx
@@ -9,6 +10,12 @@ import httpx
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class LLMCallResult:
+    content: str | None
+    tokens: int = 0
 
 
 def _is_string_key_dict(value: object) -> TypeGuard[dict[str, object]]:
@@ -34,18 +41,34 @@ def _extract_content(payload: object) -> str | None:
     return stripped or None
 
 
+def _extract_tokens(payload: object) -> int:
+    if not _is_string_key_dict(payload):
+        return 0
+    usage = payload.get("usage")
+    if not _is_string_key_dict(usage):
+        return 0
+    total = usage.get("total_tokens")
+    if isinstance(total, int):
+        return total
+    prompt = usage.get("prompt_tokens")
+    completion = usage.get("completion_tokens")
+    if isinstance(prompt, int) and isinstance(completion, int):
+        return prompt + completion
+    return 0
+
+
 def call_llm(
     system_prompt: str,
     user_input: str,
     *,
     json_mode: bool = False,
     temperature: float = 0.2,
-) -> str | None:
-    """Call the configured LLM. Returns the assistant content, or None on failure."""
+) -> LLMCallResult:
+    """Call the configured LLM. Returns content + token usage; content is None on failure."""
     api_key = settings.llm_api_key
     if not api_key:
         logger.warning("LLM_API_KEY is not configured.")
-        return None
+        return LLMCallResult(content=None)
 
     url = f"{settings.llm_base_url.rstrip('/')}/chat/completions"
     headers = {
@@ -70,12 +93,15 @@ def call_llm(
             response_data = response.json()
     except httpx.HTTPError:
         logger.exception("LLM request failed.")
-        return None
+        return LLMCallResult(content=None)
     except ValueError:
         logger.exception("LLM response could not be decoded as JSON.")
-        return None
+        return LLMCallResult(content=None)
 
-    return _extract_content(response_data)
+    return LLMCallResult(
+        content=_extract_content(response_data),
+        tokens=_extract_tokens(response_data),
+    )
 
 
 def parse_json_object(raw: str) -> dict[str, Any] | None:

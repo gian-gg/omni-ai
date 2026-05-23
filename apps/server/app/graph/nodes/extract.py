@@ -66,22 +66,24 @@ Return JSON only:
 
 
 def _run_extractor(prompt: str, user_input: str) -> dict[str, Any]:
-    raw = call_llm(prompt, user_input, json_mode=True)
-    if raw is None:
+    result = call_llm(prompt, user_input, json_mode=True)
+    if result.content is None:
         return {
             "response": f"(LLM unavailable) Captured: {user_input}",
             "complete_response": None,
             "cancelled_response": None,
             "data": None,
+            "tokens": result.tokens,
         }
 
-    parsed = parse_json_object(raw)
+    parsed = parse_json_object(result.content)
     if parsed is None:
         return {
-            "response": raw,
+            "response": result.content,
             "complete_response": None,
             "cancelled_response": None,
             "data": None,
+            "tokens": result.tokens,
         }
 
     def _clean(value: object) -> str | None:
@@ -104,6 +106,7 @@ def _run_extractor(prompt: str, user_input: str) -> dict[str, Any]:
         "complete_response": complete_text,
         "cancelled_response": cancelled_text,
         "data": data,
+        "tokens": result.tokens,
     }
 
 

@@ -33,6 +33,8 @@ def _run_chat(prompt: str, authenticated_user: AuthenticatedUser) -> ChatRespons
         complete_response=result.complete_response,
         cancelled_response=result.cancelled_response,
         data=result.data,
+        tokens=result.tokens,
+        datetime=result.datetime,
     )
 
 

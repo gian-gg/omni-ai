@@ -4,6 +4,8 @@ from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
+from datetime import UTC
+
 from app.core.auth import AuthenticatedUser, VerifiedTokenClaims, get_current_authenticated_user
 from app.main import app
 from app.models.user import User
@@ -52,6 +54,8 @@ class ChatEndpointsTestCase(unittest.TestCase):
                 complete_response=None,
                 cancelled_response=None,
                 data=None,
+                tokens=42,
+                datetime=datetime(2026, 5, 23, 17, 0, tzinfo=UTC),
             ),
         ) as run_orchestrator_mock:
             client = TestClient(app)
@@ -66,6 +70,8 @@ class ChatEndpointsTestCase(unittest.TestCase):
                 "complete_response": None,
                 "cancelled_response": None,
                 "data": None,
+                "tokens": 42,
+                "datetime": "2026-05-23T17:00:00Z",
             },
         )
         run_orchestrator_mock.assert_called_once_with("hello", user_id="local-user-123")

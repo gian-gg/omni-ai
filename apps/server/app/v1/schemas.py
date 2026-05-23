@@ -49,6 +49,8 @@ class ChatResponse(BaseModel):
     complete_response: str | None = None
     cancelled_response: str | None = None
     data: FinanceData | TodoData | NoteData | None = None
+    tokens: int = 0
+    datetime: datetime
 
 
 class AuthenticatedUserResponse(BaseModel):

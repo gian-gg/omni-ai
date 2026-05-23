@@ -27,15 +27,17 @@ def _coerce_intent(value: object) -> IntentType:
 
 
 def classify_node(state: OrchestratorState) -> dict[str, Any]:
-    raw = call_llm(CLASSIFY_SYSTEM_PROMPT, state["user_input"], json_mode=True)
-    if raw is None:
-        return {"intent": "chat"}
+    result = call_llm(CLASSIFY_SYSTEM_PROMPT, state["user_input"], json_mode=True)
+    update: dict[str, Any] = {"intent": "chat", "tokens": result.tokens}
+    if result.content is None:
+        return update
 
-    parsed = parse_json_object(raw)
+    parsed = parse_json_object(result.content)
     if parsed is None:
-        return {"intent": "chat"}
+        return update
 
-    return {"intent": _coerce_intent(parsed.get("intent"))}
+    update["intent"] = _coerce_intent(parsed.get("intent"))
+    return update
 
 
 def route_by_intent(state: OrchestratorState) -> str:
