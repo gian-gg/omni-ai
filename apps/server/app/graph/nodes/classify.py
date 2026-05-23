@@ -11,11 +11,26 @@ logger = logging.getLogger(__name__)
 
 CLASSIFY_SYSTEM_PROMPT = """You classify a user message into exactly one intent.
 
-Intents:
-- "finance": tracking income, expenses, purchases, bills, transactions, money matters
-- "todo": tasks, reminders, action items, things to complete
-- "note": thoughts, ideas, journal entries, observations
-- "chat": general conversation, questions, greetings, anything else
+The decisive question: is the user RECORDING new data, or doing anything else (asking, recalling, chatting)?
+
+Intents — only pick a capture intent when the user is recording NEW data right now:
+- "finance": the user reports a transaction they just made or received. e.g. "I bought coffee for $4", "got paid $1000 from freelance".
+- "todo": the user is adding a new task or reminder. e.g. "remind me to call mom", "I need to file taxes".
+- "note": the user is capturing a new thought, idea, observation, or journal entry. e.g. "random thought: …", "noticed today that …".
+- "chat": EVERYTHING ELSE — questions about past data, lookups, recall, greetings, follow-ups, advice, ambiguous prompts.
+
+A question or lookup about finance, todos, or notes is ALWAYS "chat", not the matching capture intent.
+
+Examples:
+- "I bought coffee for $4" → {"intent": "finance"}
+- "how much did I spend on coffee this month?" → {"intent": "chat"}
+- "what are my biggest expense categories?" → {"intent": "chat"}
+- "remind me to call mom tomorrow" → {"intent": "todo"}
+- "what todos do I have due this week?" → {"intent": "chat"}
+- "random thought: pour-over tastes better with consistent grind" → {"intent": "note"}
+- "what did I write about coffee?" → {"intent": "chat"}
+- "hello" → {"intent": "chat"}
+- "what's the capital of France?" → {"intent": "chat"}
 
 Respond with JSON only: {"intent": "finance" | "todo" | "note" | "chat"}"""
 

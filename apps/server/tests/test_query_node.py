@@ -35,6 +35,16 @@ class QueryNodeTests(unittest.TestCase):
         call_mock.assert_not_called()
         self.assertEqual(result, {"tool_calls": [], "tokens": 0})
 
+    def test_short_circuits_for_capture_intents(self) -> None:
+        for intent in ("finance", "todo", "note"):
+            with self.subTest(intent=intent):
+                state = _state()
+                state["intent"] = intent  # type: ignore[typeddict-item]
+                with patch("app.graph.nodes.query.call_llm") as call_mock:
+                    result = query_node(state)
+                call_mock.assert_not_called()
+                self.assertEqual(result, {"tool_calls": [], "tokens": 0})
+
     def test_returns_empty_when_llm_emits_no_tool_calls(self) -> None:
         with (
             patch("app.graph.nodes.query.call_llm", return_value=_llm([], tokens=5)),

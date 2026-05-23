@@ -14,14 +14,18 @@ logger = logging.getLogger(__name__)
 
 QUERY_SYSTEM_PROMPT_TEMPLATE = (
     "You are Omni's data assistant. You can call read-only tools that query the "
-    "user's transactions and todos. Call zero or more tools when they would help "
-    "ground the response in the user's actual data — for example, when the user "
-    "asks about spending, balances, recent purchases, or pending todos, or when "
-    "logging a new finance/todo entry that might be a duplicate.\n\n"
+    "user's transactions and todos.\n\n"
     "Today's date is {today}. Use it to resolve relative time phrases like "
     "'this week' or 'last month'.\n\n"
-    "Only call tools when they would meaningfully change the answer. For "
-    "small-talk or unrelated prompts, call no tools."
+    "Call a tool ONLY when the answer truly depends on the user's stored data. "
+    "Call NO tools when:\n"
+    "- the message is conversational, a greeting, small-talk, or unrelated to "
+    "the user's records (e.g. 'hello', 'what's the weather', 'who are you')\n"
+    "- the question is generic and not user-specific (e.g. 'what's a good budget "
+    "rule', 'how do I save money')\n"
+    "- the prompt is ambiguous and you'd be guessing at filters\n\n"
+    "When in doubt, return zero tool calls. Wrong filters waste tokens and "
+    "confuse the user."
 )
 
 
@@ -52,6 +56,12 @@ def _execute_tool_call(
 def query_node(state: OrchestratorState) -> dict[str, Any]:
     user_id = state.get("user_id")
     if not user_id:
+        return {"tool_calls": [], "tokens": 0}
+
+    # Tool calling is only useful when the user is asking about their data.
+    # Capture intents (finance / todo / note) are recording new data and almost
+    # never benefit from a tool round-trip — skip the DeepSeek call entirely.
+    if state.get("intent") != "chat":
         return {"tool_calls": [], "tokens": 0}
 
     result = call_llm(

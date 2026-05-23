@@ -61,6 +61,17 @@ class ClassifyNodeTests(unittest.TestCase):
             result = classify_node(_state("hello"))
         self.assertEqual(result, {"intent": "chat", "tokens": 0})
 
+    def test_prompt_distinguishes_capture_from_question(self) -> None:
+        # Smoke-check the prompt contains the capture-vs-question framing so
+        # future edits can't quietly remove it.
+        from app.graph.nodes.classify import CLASSIFY_SYSTEM_PROMPT
+
+        self.assertIn("RECORDING new data", CLASSIFY_SYSTEM_PROMPT)
+        self.assertIn("ALWAYS", CLASSIFY_SYSTEM_PROMPT)
+        # Examples must cover both sides of the distinction.
+        self.assertIn("I bought coffee", CLASSIFY_SYSTEM_PROMPT)
+        self.assertIn("how much did I spend", CLASSIFY_SYSTEM_PROMPT)
+
 
 class RouterTests(unittest.TestCase):
     def test_routes_each_intent_to_its_node(self) -> None:

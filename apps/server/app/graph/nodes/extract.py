@@ -16,56 +16,107 @@ def _today_iso() -> str:
     return _date.today().isoformat()
 
 
-FINANCE_PROMPT = """Extract a finance transaction from the user message.
+FINANCE_PROMPT = """Extract a finance transaction the user just told you about.
 
-Return JSON only:
+Return JSON ONLY. Every key shown below MUST appear. Strings use double quotes, numbers are unquoted, null is unquoted (not "null"). `amount` MUST be a positive number — the `type` field carries the sign (income vs expense).
+
+Schema:
 {
-  "response": "short, action-oriented proposal (e.g. \"Ooh interesting! Let's add that to your transactions.\") — invite the user to confirm",
-  "complete_response": "short message to show after the user approves (e.g. \"Done — added to your transactions.\")",
-  "cancelled_response": "short message to show after the user cancels (e.g. \"No worries, didn't save it.\")",
-  "used_source_ids": ["id of each provided note you actually used; empty array if none"],
+  "response": string,            // action-oriented proposal; invite the user to confirm
+  "complete_response": string,   // shown after the user approves
+  "cancelled_response": string,  // shown after the user cancels
+  "used_source_ids": [string],   // ids of provided notes you actually used; [] if none
   "data": {
     "type": "income" | "expense",
-    "amount": number,
-    "currency": string (ISO code, default "USD"),
+    "amount": number,            // positive
+    "currency": string,          // ISO 4217, default "USD"
     "category": string | null,
     "description": string | null,
-    "date": string | null (ISO 8601 date the transaction occurred, if the user states one; else null)
+    "date": string | null        // ISO 8601 date if the user stated one; else null
+  }
+}
+
+Canonical example (user said: "I bought coffee for $4 at Starbucks"):
+{
+  "response": "Ooh, coffee run! Want me to add that to your transactions?",
+  "complete_response": "Done — logged a $4 coffee expense.",
+  "cancelled_response": "No worries, didn't save it.",
+  "used_source_ids": [],
+  "data": {
+    "type": "expense",
+    "amount": 4,
+    "currency": "USD",
+    "category": "food",
+    "description": "coffee at Starbucks",
+    "date": null
   }
 }"""
 
 
-TODO_PROMPT = """Extract a todo item from the user message.
+TODO_PROMPT = """Extract a todo the user just asked you to remember.
 
-Return JSON only:
+Return JSON ONLY. Every key shown below MUST appear. Strings use double quotes, null is unquoted.
+
+Schema:
 {
-  "response": "short, action-oriented proposal (e.g. \"Ooh interesting! Let's add that to your transactions.\") — invite the user to confirm",
-  "complete_response": "short message to show after the user approves (e.g. \"Done — added to your transactions.\")",
-  "cancelled_response": "short message to show after the user cancels (e.g. \"No worries, didn't save it.\")",
-  "used_source_ids": ["id of each provided note you actually used; empty array if none"],
+  "response": string,            // action-oriented proposal; invite the user to confirm
+  "complete_response": string,   // shown after the user approves
+  "cancelled_response": string,  // shown after the user cancels
+  "used_source_ids": [string],   // ids of provided notes you actually used; [] if none
   "data": {
-    "title": string,
+    "title": string,             // short imperative phrase
     "description": string | null,
-    "due_date": string | null (ISO 8601 date if mentioned),
-    "priority": "low" | "medium" | "high" (default "medium"),
-    "date": string | null (ISO 8601 date the todo was created/logged, if the user states one; else null)
+    "due_date": string | null,   // ISO 8601 if mentioned
+    "priority": "low" | "medium" | "high",
+    "date": string | null        // ISO 8601 if the user stated when they logged this; else null
+  }
+}
+
+Canonical example (user said: "remind me to call mom tomorrow, it's important"):
+{
+  "response": "Got it — adding that to your todos. Sound good?",
+  "complete_response": "Done — added \"call mom\" to your todos.",
+  "cancelled_response": "No worries, didn't save it.",
+  "used_source_ids": [],
+  "data": {
+    "title": "Call mom",
+    "description": null,
+    "due_date": null,
+    "priority": "high",
+    "date": null
   }
 }"""
 
 
-NOTE_PROMPT = """Extract a note/idea from the user message.
+NOTE_PROMPT = """Extract a note/idea the user just shared.
 
-Return JSON only:
+Return JSON ONLY. Every key shown below MUST appear. Strings use double quotes, null is unquoted, empty arrays are [] (never null).
+
+Schema:
 {
-  "response": "short, action-oriented proposal (e.g. \"Ooh interesting! Let's add that to your transactions.\") — invite the user to confirm",
-  "complete_response": "short message to show after the user approves (e.g. \"Done — added to your transactions.\")",
-  "cancelled_response": "short message to show after the user cancels (e.g. \"No worries, didn't save it.\")",
-  "used_source_ids": ["id of each provided note you actually used; empty array if none"],
+  "response": string,            // action-oriented proposal; invite the user to confirm
+  "complete_response": string,   // shown after the user approves
+  "cancelled_response": string,  // shown after the user cancels
+  "used_source_ids": [string],   // ids of provided notes you actually used; [] if none
   "data": {
-    "title": string | null,
-    "content": string,
-    "tags": [string],
-    "date": string | null (ISO 8601 date the note refers to, if the user states one; else null)
+    "title": string | null,      // a short headline if you can write one; else null
+    "content": string,           // the user's thought, lightly cleaned up
+    "tags": [string],            // lowercase, kebab-case, 0-5 tags
+    "date": string | null        // ISO 8601 if the user stated when this happened; else null
+  }
+}
+
+Canonical example (user said: "random thought: pour-over coffee tastes way better when the grinder is consistent"):
+{
+  "response": "Ooh, nice insight! Want me to save that as a note?",
+  "complete_response": "Saved to your notes.",
+  "cancelled_response": "No worries, didn't save it.",
+  "used_source_ids": [],
+  "data": {
+    "title": "Grinder consistency matters more than the bean",
+    "content": "Pour-over coffee tastes way better when the grinder is consistent.",
+    "tags": ["coffee", "brewing"],
+    "date": null
   }
 }"""
 
