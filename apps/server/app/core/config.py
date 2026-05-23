@@ -14,6 +14,9 @@ class Settings(BaseSettings):
     supabase_audience: str | None = None
     llm_api_key: str | None = None
     llm_base_url: str = "https://api.deepseek.com"
+    gemini_api_key: str | None = None
+    gemini_embedding_model: str = "gemini-embedding-001"
+    gemini_base_url: str = "https://generativelanguage.googleapis.com"
     system_prompt: str = "You are a helpful, concise assistant."
     llm_model: str = "deepseek-v4-flash"
 

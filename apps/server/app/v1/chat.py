@@ -35,6 +35,7 @@ def _run_chat(prompt: str, authenticated_user: AuthenticatedUser) -> ChatRespons
         data=result.data,
         tokens=result.tokens,
         datetime=result.datetime,
+        sources=result.sources,
     )
 
 
