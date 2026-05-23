@@ -54,23 +54,3 @@ class ChatEndpointsTestCase(unittest.TestCase):
         self.assertEqual(response.json(), {"response": "DeepSeek reply"})
         run_orchestrator_mock.assert_called_once_with("hello", user_id="local-user-123")
 
-    def test_agent_endpoint_returns_401_without_auth(self) -> None:
-        client = TestClient(app)
-        response = client.post("/api/v1/agent", json={"prompt": "hello"})
-
-        self.assertEqual(response.status_code, 401)
-        self.assertEqual(response.json(), {"detail": "Authentication required."})
-
-    def test_agent_endpoint_returns_chat_response_shape_when_authenticated(self) -> None:
-        app.dependency_overrides[get_current_authenticated_user] = _build_authenticated_user
-
-        with patch(
-            "app.v1.chat.run_orchestrator",
-            return_value="DeepSeek reply",
-        ) as run_orchestrator_mock:
-            client = TestClient(app)
-            response = client.post("/api/v1/agent", json={"prompt": "hello"})
-
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json(), {"response": "DeepSeek reply"})
-        run_orchestrator_mock.assert_called_once_with("hello", user_id="local-user-123")

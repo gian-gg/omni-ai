@@ -30,18 +30,8 @@ def _run_chat(prompt: str, authenticated_user: AuthenticatedUser) -> ChatRespons
     return ChatResponse(response=reply)
 
 
-@router.post("/chat", response_model=ChatResponse, summary="Chat with the orchestrator")
+@router.post("/chat", response_model=ChatResponse, summary="Run the agent orchestrator")
 def chat(
-    req: ChatRequest,
-    authenticated_user: Annotated[
-        AuthenticatedUser, Depends(get_current_authenticated_user)
-    ],
-) -> ChatResponse:
-    return _run_chat(req.prompt, authenticated_user)
-
-
-@router.post("/agent", response_model=ChatResponse, summary="Run the agent orchestrator")
-def agent(
     req: ChatRequest,
     authenticated_user: Annotated[
         AuthenticatedUser, Depends(get_current_authenticated_user)
