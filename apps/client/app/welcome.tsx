@@ -1,13 +1,3 @@
-import {
-  IBMPlexMono_600SemiBold,
-  useFonts as useIBMPlexMonoFonts,
-} from '@expo-google-fonts/ibm-plex-mono';
-import {
-  Manrope_400Regular,
-  Manrope_600SemiBold,
-  useFonts as useManropeFonts,
-} from '@expo-google-fonts/manrope';
-import { Syne_600SemiBold, useFonts as useSyneFonts } from '@expo-google-fonts/syne';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
@@ -16,6 +6,12 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Svg, Path } from 'react-native-svg';
 import { OmniGradient } from '@/constants/theme';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import * as WebBrowser from 'expo-web-browser';
+import * as Linking from 'expo-linking';
+import * as SecureStore from 'expo-secure-store';
+import { makeRedirectUri } from 'expo-auth-session';
+
+WebBrowser.maybeCompleteAuthSession();
 
 function GoogleIcon() {
   return (
@@ -33,19 +29,43 @@ function GoogleIcon() {
 export default function WelcomeScreen() {
   const router = useRouter();
 
-  const [syneLoaded] = useSyneFonts({ Syne_600SemiBold });
-  const [manropeLoaded] = useManropeFonts({ Manrope_400Regular, Manrope_600SemiBold });
-  const [ibmPlexMonoLoaded] = useIBMPlexMonoFonts({ IBMPlexMono_600SemiBold });
+  const handleGoogleSignIn = async () => {
+    try {
+      // Use expo-auth-session's makeRedirectUri for more robust deep linking across Expo Go and native
+      const redirectUrl = makeRedirectUri();
+      console.log("Redirecting back to:", redirectUrl);
+      
+      const authUrl = `https://omni-api.giann.dev/api/v1/auth/google?redirect_to=${encodeURIComponent(redirectUrl)}`;
 
-  const fontsReady = syneLoaded && manropeLoaded && ibmPlexMonoLoaded;
+      const result = await WebBrowser.openAuthSessionAsync(authUrl, redirectUrl);
 
-  if (!fontsReady) {
-    return (
-      <View style={styles.loading}>
-        <ActivityIndicator color="#0B0B0D" />
-      </View>
-    );
-  }
+      if (result.type === 'success' && result.url) {
+        const hash = result.url.split('#')[1];
+        if (hash) {
+          const params = hash.split('&').reduce((acc, current) => {
+            const [key, value] = current.split('=');
+            acc[key] = value;
+            return acc;
+          }, {} as Record<string, string>);
+          
+          const accessToken = params['access_token'];
+          const refreshToken = params['refresh_token'];
+
+          if (accessToken) {
+            await SecureStore.setItemAsync('access_token', accessToken);
+            if (refreshToken) {
+              await SecureStore.setItemAsync('refresh_token', refreshToken);
+            }
+            router.replace('/(tabs)');
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Auth error:', error);
+    }
+  };
+
+  // Fonts are now loaded globally in _layout.tsx
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -76,7 +96,7 @@ export default function WelcomeScreen() {
       <View style={styles.cta}>
         <Pressable
           style={({ pressed }) => [pressed && styles.ctaButtonPressed]}
-          onPress={() => router.replace('/(tabs)')}
+          onPress={handleGoogleSignIn}
         >
           <LinearGradient
             colors={OmniGradient}
