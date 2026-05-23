@@ -3,6 +3,10 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { ScrollView, StyleSheet, Text, View, Pressable } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
+import { useState, useEffect } from 'react';
+import { useRouter } from 'expo-router';
+import * as SecureStore from 'expo-secure-store';
+import { jwtDecode } from 'jwt-decode';
 
 import { OmniColors, OmniFonts, OmniGradient } from '@/constants/theme';
 
@@ -146,9 +150,9 @@ function SettingsItem({ label, value, isToggle }: { label: string, value?: strin
   );
 }
 
-function ActionItem({ label, icon, destructive }: { label: string, icon: keyof typeof MaterialIcons.glyphMap, destructive?: boolean }) {
+function ActionItem({ label, icon, destructive, onPress }: { label: string, icon: keyof typeof MaterialIcons.glyphMap, destructive?: boolean, onPress?: () => void }) {
   return (
-    <Pressable style={({ pressed }) => [styles.settingsItem, destructive && styles.actionItemDestructive, pressed && styles.settingsItemPressed]}>
+    <Pressable style={({ pressed }) => [styles.settingsItem, destructive && styles.actionItemDestructive, pressed && styles.settingsItemPressed]} onPress={onPress}>
       <Text style={[styles.actionItemLabel, destructive && styles.actionItemLabelDestructive]}>{label}</Text>
       <MaterialIcons name={icon} size={16} color={destructive ? '#EF4444' : '#71717A'} />
     </Pressable>
@@ -158,9 +162,36 @@ function ActionItem({ label, icon, destructive }: { label: string, icon: keyof t
 // ── Screen ──────────────────────────────────────────────────────────
 
 export default function ProfileScreen() {
-  // In the future, this state will be populated from an API or global store
-  const profile = PROFILE_DATA;
+  const [profile, setProfile] = useState<UserProfile>(PROFILE_DATA);
   const settings = SETTINGS_DATA;
+  const router = useRouter();
+
+  useEffect(() => {
+    async function loadProfile() {
+      try {
+        const token = await SecureStore.getItemAsync('access_token');
+        if (token) {
+          const decoded = jwtDecode<any>(token);
+          setProfile((prev) => ({
+            ...prev,
+            id: decoded.sub || prev.id,
+            name: decoded.user_metadata?.full_name || decoded.user_metadata?.name || prev.name,
+            email: decoded.email || decoded.user_metadata?.email || prev.email,
+            avatarUrl: decoded.user_metadata?.avatar_url || decoded.user_metadata?.picture || prev.avatarUrl,
+          }));
+        }
+      } catch (e) {
+        console.error('Failed to decode token', e);
+      }
+    }
+    loadProfile();
+  }, []);
+
+  const handleSignOut = async () => {
+    await SecureStore.deleteItemAsync('access_token');
+    await SecureStore.deleteItemAsync('refresh_token');
+    router.replace('/welcome');
+  };
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -190,7 +221,7 @@ export default function ProfileScreen() {
           <View style={styles.settingsGroup}>
             <ActionItem label="Export my records" icon="file-download" />
             <ActionItem label="Manage Google sign-in" icon="security" />
-            <ActionItem label="Sign out" icon="logout" destructive />
+            <ActionItem label="Sign out" icon="logout" destructive onPress={handleSignOut} />
           </View>
         </View>
       </ScrollView>
