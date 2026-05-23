@@ -14,7 +14,7 @@ router = APIRouter()
 
 def _run_chat(prompt: str, authenticated_user: AuthenticatedUser) -> ChatResponse:
     try:
-        reply = run_orchestrator(prompt, user_id=authenticated_user.user.id)
+        result = run_orchestrator(prompt, user_id=authenticated_user.user.id)
     except ValueError as error:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -27,7 +27,11 @@ def _run_chat(prompt: str, authenticated_user: AuthenticatedUser) -> ChatRespons
             detail="Failed to process request.",
         ) from error
 
-    return ChatResponse(response=reply)
+    return ChatResponse(
+        intent=result.intent,
+        response=result.response,
+        data=result.data,
+    )
 
 
 @router.post("/chat", response_model=ChatResponse, summary="Run the agent orchestrator")

@@ -1,17 +1,45 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
+from typing import Any
+
 from langgraph.graph import END, START, StateGraph
 
-from app.graph.nodes import llm_node
-from app.graph.state import OrchestratorState
+from app.graph.nodes import (
+    chat_reply_node,
+    classify_node,
+    extract_finance_node,
+    extract_note_node,
+    extract_todo_node,
+    route_by_intent,
+)
+from app.graph.state import IntentType, OrchestratorState
 
 
 def build_orchestrator():
     graph_builder: StateGraph[OrchestratorState] = StateGraph(OrchestratorState)
 
-    graph_builder.add_node("llm", llm_node)
-    graph_builder.add_edge(START, "llm")
-    graph_builder.add_edge("llm", END)
+    graph_builder.add_node("classify", classify_node)
+    graph_builder.add_node("chat_reply", chat_reply_node)
+    graph_builder.add_node("extract_finance", extract_finance_node)
+    graph_builder.add_node("extract_todo", extract_todo_node)
+    graph_builder.add_node("extract_note", extract_note_node)
+
+    graph_builder.add_edge(START, "classify")
+    graph_builder.add_conditional_edges(
+        "classify",
+        route_by_intent,
+        {
+            "chat_reply": "chat_reply",
+            "extract_finance": "extract_finance",
+            "extract_todo": "extract_todo",
+            "extract_note": "extract_note",
+        },
+    )
+    graph_builder.add_edge("chat_reply", END)
+    graph_builder.add_edge("extract_finance", END)
+    graph_builder.add_edge("extract_todo", END)
+    graph_builder.add_edge("extract_note", END)
 
     return graph_builder.compile()
 
@@ -19,7 +47,14 @@ def build_orchestrator():
 orchestrator_graph = build_orchestrator()
 
 
-def run_orchestrator(user_input: str, user_id: str | None = None) -> str:
+@dataclass(frozen=True)
+class OrchestratorResult:
+    intent: IntentType
+    response: str
+    data: dict[str, Any] | None
+
+
+def run_orchestrator(user_input: str, user_id: str | None = None) -> OrchestratorResult:
     clean_input = user_input.strip()
     if not clean_input:
         raise ValueError("user_input must not be empty")
@@ -27,8 +62,13 @@ def run_orchestrator(user_input: str, user_id: str | None = None) -> str:
     initial_state: OrchestratorState = {
         "user_id": user_id,
         "user_input": clean_input,
-        "intent": "llm",
+        "intent": "chat",
         "response": "",
+        "data": None,
     }
     final_state = orchestrator_graph.invoke(initial_state)
-    return final_state["response"]
+    return OrchestratorResult(
+        intent=final_state["intent"],
+        response=final_state["response"],
+        data=final_state.get("data"),
+    )

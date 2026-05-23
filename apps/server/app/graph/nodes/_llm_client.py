@@ -1,69 +1,67 @@
 from __future__ import annotations
 
+import json
 import logging
-from typing import TypeGuard
+from typing import Any, TypeGuard
 
 import httpx
 
 from app.core.config import settings
-from app.graph.state import OrchestratorState
 
 logger = logging.getLogger(__name__)
-
-
-def _fallback_response(user_input: str) -> dict[str, str]:
-    return {"response": f"(LLM unavailable) You said: {user_input}"}
 
 
 def _is_string_key_dict(value: object) -> TypeGuard[dict[str, object]]:
     return isinstance(value, dict) and all(isinstance(key, str) for key in value)
 
 
-def _parse_content(data: dict[str, object]) -> str | None:
-    choices = data.get("choices")
+def _extract_content(payload: object) -> str | None:
+    if not _is_string_key_dict(payload):
+        return None
+    choices = payload.get("choices")
     if not isinstance(choices, list) or not choices:
         return None
-
-    first_choice = choices[0]
-    if not _is_string_key_dict(first_choice):
+    first = choices[0]
+    if not _is_string_key_dict(first):
         return None
-
-    message = first_choice.get("message")
+    message = first.get("message")
     if not _is_string_key_dict(message):
         return None
-
     content = message.get("content")
     if not isinstance(content, str):
         return None
-
-    stripped_content = content.strip()
-    if not stripped_content:
-        return None
-
-    return stripped_content
+    stripped = content.strip()
+    return stripped or None
 
 
-def llm_node(state: OrchestratorState) -> dict[str, str]:
-    user_input = state["user_input"].strip()
+def call_llm(
+    system_prompt: str,
+    user_input: str,
+    *,
+    json_mode: bool = False,
+    temperature: float = 0.2,
+) -> str | None:
+    """Call the configured LLM. Returns the assistant content, or None on failure."""
     api_key = settings.llm_api_key
     if not api_key:
         logger.warning("LLM_API_KEY is not configured.")
-        return _fallback_response(user_input)
+        return None
 
     url = f"{settings.llm_base_url.rstrip('/')}/chat/completions"
     headers = {
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
     }
-
     payload: dict[str, object] = {
         "model": settings.llm_model,
         "messages": [
-            {"role": "system", "content": settings.system_prompt},
+            {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_input},
         ],
-        "temperature": 0.2,
+        "temperature": temperature,
     }
+    if json_mode:
+        payload["response_format"] = {"type": "json_object"}
 
     try:
         with httpx.Client(timeout=30) as client:
@@ -72,18 +70,17 @@ def llm_node(state: OrchestratorState) -> dict[str, str]:
             response_data = response.json()
     except httpx.HTTPError:
         logger.exception("LLM request failed.")
-        return _fallback_response(user_input)
+        return None
     except ValueError:
         logger.exception("LLM response could not be decoded as JSON.")
-        return _fallback_response(user_input)
+        return None
 
-    if not _is_string_key_dict(response_data):
-        logger.error("LLM response payload is not a dict.")
-        return _fallback_response(user_input)
+    return _extract_content(response_data)
 
-    content = _parse_content(response_data)
-    if content is None:
-        logger.error("LLM response payload did not include valid content.")
-        return _fallback_response(user_input)
 
-    return {"response": content}
+def parse_json_object(raw: str) -> dict[str, Any] | None:
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError:
+        return None
+    return parsed if isinstance(parsed, dict) else None

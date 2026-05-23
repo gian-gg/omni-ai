@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 from app.core.auth import AuthenticatedUser, VerifiedTokenClaims, get_current_authenticated_user
 from app.main import app
 from app.models.user import User
+from app.services.orchestrator import OrchestratorResult
 
 
 def _build_authenticated_user() -> AuthenticatedUser:
@@ -45,12 +46,17 @@ class ChatEndpointsTestCase(unittest.TestCase):
 
         with patch(
             "app.v1.chat.run_orchestrator",
-            return_value="DeepSeek reply",
+            return_value=OrchestratorResult(
+                intent="chat", response="DeepSeek reply", data=None
+            ),
         ) as run_orchestrator_mock:
             client = TestClient(app)
             response = client.post("/api/v1/chat", json={"prompt": "hello"})
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json(), {"response": "DeepSeek reply"})
+        self.assertEqual(
+            response.json(),
+            {"intent": "chat", "response": "DeepSeek reply", "data": None},
+        )
         run_orchestrator_mock.assert_called_once_with("hello", user_id="local-user-123")
 
