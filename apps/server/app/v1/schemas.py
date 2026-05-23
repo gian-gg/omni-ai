@@ -1,7 +1,7 @@
-from datetime import datetime
+from datetime import date as _date, datetime
 from typing import Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 IntentType = Literal["finance", "todo", "note", "chat"]
@@ -13,7 +13,7 @@ class FinanceData(BaseModel):
     currency: str = "USD"
     category: str | None = None
     description: str | None = None
-    date: str | None = None
+    date: _date | None = None
 
 
 class TodoData(BaseModel):
@@ -111,3 +111,33 @@ class AuthSessionResponse(BaseModel):
     token_type: str | None
     expires_in: int | None
     user: SupabaseAuthUserResponse | None
+
+
+class TransactionResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    type: Literal["income", "expense"]
+    amount: float
+    currency: str
+    category: str | None
+    description: str | None
+    date: _date
+    created_at: datetime
+    updated_at: datetime
+
+
+class TransactionUpdateRequest(BaseModel):
+    type: Literal["income", "expense"] | None = None
+    amount: float | None = None
+    currency: str | None = None
+    category: str | None = None
+    description: str | None = None
+    date: _date | None = None
+
+
+class TransactionListResponse(BaseModel):
+    items: list[TransactionResponse]
+    total: int
+    limit: int
+    offset: int
