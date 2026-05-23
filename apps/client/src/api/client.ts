@@ -202,3 +202,29 @@ export async function completeTodoApi(id: string): Promise<TodoItem> {
     method: 'POST',
   });
 }
+
+// ── Notes ───────────────────────────────────────────────────────────
+
+export type NoteItem = {
+  id: string;
+  title: string | null;
+  content: string;
+  tags: string[];
+  date: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type NoteListResponse = {
+  items: NoteItem[];
+  total: number;
+  limit: number;
+  offset: number;
+};
+
+export async function listNotes(
+  limit = 50,
+  offset = 0,
+): Promise<NoteListResponse> {
+  return apiFetch<NoteListResponse>(`/notes?limit=${limit}&offset=${offset}`);
+}

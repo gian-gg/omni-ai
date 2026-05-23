@@ -189,7 +189,7 @@ function OmniStructuredMessage({
 
   const getSubspaceName = () => {
     if (rawIntent === 'finance') return 'Transactions';
-    if (rawIntent === 'todo') return 'To Do List';
+    if (rawIntent === 'todo') return 'To Dos';
     if (rawIntent === 'note') return 'Thoughts';
     return 'Spaces';
   };

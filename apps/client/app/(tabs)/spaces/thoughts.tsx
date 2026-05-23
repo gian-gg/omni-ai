@@ -1,7 +1,7 @@
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   FlatList,
   Pressable,
@@ -9,63 +9,21 @@ import {
   Text,
   TextInput,
   View,
+  ActivityIndicator,
+  RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { OmniColors, OmniFonts, OmniGradient } from '@/constants/theme';
+import { listNotes, NoteItem } from '@/api/client';
 
 // ── Types ───────────────────────────────────────────────────────────
 
-type Thought = {
-  id: string;
-  category: string;
-  time: string;
-  title: string;
-  body: string;
-  action: string;
-};
-
 type TabKey = 'all' | 'product' | 'ops' | 'personal';
-
-// ── Static data (swap with API later) ───────────────────────────────
-
-const THOUGHTS: Thought[] = [
-  {
-    id: '1',
-    category: 'Ops',
-    time: '2h ago',
-    title: 'Offsite venue direction',
-    body: 'Prefer spaces with strong train access, two breakout rooms, and quiet corners for one-on-ones.',
-    action: 'Task',
-  },
-  {
-    id: '2',
-    category: 'Product',
-    time: 'Yesterday',
-    title: 'Q2 launch comms angle',
-    body: 'Position launch around fewer taps to capture intent and faster confirmation loops for teams.',
-    action: 'Pin',
-  },
-  {
-    id: '3',
-    category: 'Product',
-    time: 'Feb 19',
-    title: 'Client onboarding insight',
-    body: 'First-week setup should include templates for transactions and tasks to reduce blank-state friction.',
-    action: 'List',
-  },
-];
-
-const TABS: { key: TabKey; label: string }[] = [
-  { key: 'all',      label: 'All' },
-  { key: 'product',  label: 'Product' },
-  { key: 'ops',      label: 'Ops' },
-  { key: 'personal', label: 'Personal' },
-];
 
 // ── Sub-components ──────────────────────────────────────────────────
 
-function SummaryBanner() {
+function SummaryBanner({ total, pinned }: { total: number; pinned: number }) {
   return (
     <LinearGradient
       colors={OmniGradient}
@@ -76,15 +34,15 @@ function SummaryBanner() {
       <View style={styles.bannerRow}>
         <View style={styles.bannerStat}>
           <Text style={styles.bannerStatLabel}>Captured</Text>
-          <Text style={styles.bannerStatValue}>18</Text>
+          <Text style={styles.bannerStatValue}>{total}</Text>
         </View>
         <View style={styles.bannerStat}>
           <Text style={styles.bannerStatLabel}>Pinned</Text>
-          <Text style={styles.bannerStatValue}>4</Text>
+          <Text style={styles.bannerStatValue}>{pinned}</Text>
         </View>
         <View style={styles.bannerStat}>
           <Text style={styles.bannerStatLabel}>Converted</Text>
-          <Text style={styles.bannerStatValue}>7</Text>
+          <Text style={styles.bannerStatValue}>{Math.max(0, total - pinned)}</Text>
         </View>
       </View>
     </LinearGradient>
@@ -98,9 +56,16 @@ function FilterTabs({
   active: TabKey;
   onSelect: (key: TabKey) => void;
 }) {
+  const tabs: { key: TabKey; label: string }[] = [
+    { key: 'all',      label: 'All' },
+    { key: 'product',  label: 'Product' },
+    { key: 'ops',      label: 'Ops' },
+    { key: 'personal', label: 'Personal' },
+  ];
+
   return (
     <View style={styles.tabRow}>
-      {TABS.map((tab) => {
+      {tabs.map((tab) => {
         const isActive = tab.key === active;
         return (
           <Pressable
@@ -149,22 +114,49 @@ function SearchBar({
   );
 }
 
-function ThoughtCard({ item }: { item: Thought }) {
+function ThoughtCard({ item }: { item: NoteItem }) {
+  const getCategory = (tags: string[]) => {
+    if (!tags || tags.length === 0) return 'Note';
+    const known = ['product', 'ops', 'personal'];
+    const found = tags.find((t) => known.includes(t.toLowerCase()));
+    return found ? found.toUpperCase() : tags[0].toUpperCase();
+  };
+
+  const formatTime = (createdAt: string) => {
+    const d = new Date(createdAt);
+    if (isNaN(d.getTime())) return '';
+    const now = new Date();
+    const diffMs = now.getTime() - d.getTime();
+    const diffHrs = Math.floor(diffMs / (1000 * 60 * 60));
+    if (diffHrs < 24 && diffHrs >= 0) {
+      if (diffHrs === 0) {
+        const mins = Math.floor(diffMs / (1000 * 60));
+        return `${mins || 1}m ago`;
+      }
+      return `${diffHrs}h ago`;
+    }
+    const diffDays = Math.floor(diffHrs / 24);
+    if (diffDays === 1) return 'Yesterday';
+    return d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+  };
+
+  const isPinned = item.tags.some((t) => t.toLowerCase() === 'pinned' || t.toLowerCase() === 'pin');
+
   return (
     <View style={styles.thoughtCard}>
       <View style={styles.thoughtTop}>
         <View style={styles.thoughtLeft}>
           <View style={styles.metaRow}>
             <View style={styles.categoryBadge}>
-              <Text style={styles.categoryText}>{item.category}</Text>
+              <Text style={styles.categoryText}>{getCategory(item.tags)}</Text>
             </View>
-            <Text style={styles.timeText}>{item.time}</Text>
+            <Text style={styles.timeText}>{formatTime(item.created_at)}</Text>
           </View>
-          <Text style={styles.thoughtTitle}>{item.title}</Text>
-          <Text style={styles.thoughtBody}>{item.body}</Text>
+          <Text style={styles.thoughtTitle}>{item.title || 'Untitled thought'}</Text>
+          <Text style={styles.thoughtBody}>{item.content}</Text>
         </View>
         <Pressable style={styles.actionBtn}>
-          <Text style={styles.actionBtnText}>{item.action}</Text>
+          <Text style={styles.actionBtnText}>{isPinned ? 'Pinned' : 'Pin'}</Text>
         </Pressable>
       </View>
     </View>
@@ -177,30 +169,110 @@ export default function ThoughtsScreen() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<TabKey>('all');
   const [search, setSearch] = useState('');
+  const [thoughts, setThoughts] = useState<NoteItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchThoughts = useCallback(async (isRefresh = false) => {
+    try {
+      if (isRefresh) {
+        setRefreshing(true);
+      } else {
+        setLoading(true);
+      }
+      setError(null);
+      const res = await listNotes();
+      setThoughts(res.items);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to fetch thoughts');
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchThoughts();
+  }, [fetchThoughts]);
+
+  // Filter list by Tab category
+  const filtered = thoughts.filter((note) => {
+    if (activeTab === 'all') return true;
+    return note.tags.some((tag) => tag.toLowerCase() === activeTab.toLowerCase());
+  });
+
+  // Filter list by Search text
+  const displayed = search.trim()
+    ? filtered.filter(
+        (note) =>
+          (note.title && note.title.toLowerCase().includes(search.toLowerCase())) ||
+          note.content.toLowerCase().includes(search.toLowerCase())
+      )
+    : filtered;
+
+  const totalCount = thoughts.length;
+  const pinnedCount = thoughts.filter((t) =>
+    t.tags.some((tag) => tag.toLowerCase() === 'pinned' || tag.toLowerCase() === 'pin')
+  ).length;
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
-      <FlatList
-        data={THOUGHTS}
-        keyExtractor={(item) => item.id}
-        renderItem={({ item }) => <ThoughtCard item={item} />}
-        contentContainerStyle={styles.listContent}
-        showsVerticalScrollIndicator={false}
-        ListHeaderComponent={
-          <View style={styles.header}>
-            <Pressable style={styles.backBtn} onPress={() => router.back()}>
-              <MaterialIcons name="arrow-back" size={14} color="#71717A" />
-              <Text style={styles.backText}>back</Text>
-            </Pressable>
+      {loading ? (
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+          <ActivityIndicator size="large" color={OmniColors.ink} />
+        </View>
+      ) : error ? (
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24, gap: 12 }}>
+          <MaterialIcons name="error-outline" size={48} color="#EF4444" />
+          <Text style={{ fontFamily: OmniFonts.bodySemiBold, fontSize: 16, color: OmniColors.charcoal, textAlign: 'center' }}>
+            {error}
+          </Text>
+          <Pressable
+            style={({ pressed }) => [{
+              backgroundColor: OmniColors.ink,
+              borderRadius: 12,
+              paddingHorizontal: 20,
+              paddingVertical: 10,
+              opacity: pressed ? 0.9 : 1
+            }]}
+            onPress={() => fetchThoughts()}
+          >
+            <Text style={{ fontFamily: OmniFonts.bodySemiBold, fontSize: 14, color: '#fff' }}>Retry</Text>
+          </Pressable>
+        </View>
+      ) : (
+        <FlatList
+          data={displayed}
+          keyExtractor={(item) => item.id}
+          renderItem={({ item }) => <ThoughtCard item={item} />}
+          contentContainerStyle={styles.listContent}
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={() => fetchThoughts(true)} tintColor={OmniColors.ink} />
+          }
+          ListEmptyComponent={
+            <View style={styles.emptyState}>
+              <Text style={styles.emptyText}>No thoughts found</Text>
+              <Text style={styles.emptySubtext}>Thoughts created through chat will appear here.</Text>
+            </View>
+          }
+          ListHeaderComponent={
+            <View style={styles.header}>
+              <Pressable style={styles.backBtn} onPress={() => router.back()}>
+                <MaterialIcons name="arrow-back" size={14} color="#71717A" />
+                <Text style={styles.backText}>back</Text>
+              </Pressable>
 
-            <Text style={styles.screenTitle}>Thoughts</Text>
+              <Text style={styles.screenTitle}>Thoughts</Text>
 
-            <SummaryBanner />
-            <FilterTabs active={activeTab} onSelect={setActiveTab} />
-            <SearchBar value={search} onChangeText={setSearch} />
-          </View>
-        }
-      />
+              <SummaryBanner total={totalCount} pinned={pinnedCount} />
+              <FilterTabs active={activeTab} onSelect={setActiveTab} />
+              <SearchBar value={search} onChangeText={setSearch} />
+            </View>
+          }
+        />
+      )}
     </SafeAreaView>
   );
 }
@@ -377,5 +449,25 @@ const styles = StyleSheet.create({
     fontFamily: OmniFonts.bodySemiBold,
     fontSize: 11,
     color: '#52525B',
+  },
+
+  // Empty states
+  emptyState: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 48,
+    gap: 8,
+  },
+  emptyText: {
+    fontFamily: OmniFonts.bodySemiBold,
+    fontSize: 14,
+    color: '#71717A',
+  },
+  emptySubtext: {
+    fontFamily: OmniFonts.body,
+    fontSize: 13,
+    color: '#A1A1AA',
+    textAlign: 'center',
+    maxWidth: 240,
   },
 });
