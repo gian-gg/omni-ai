@@ -155,11 +155,13 @@ function HistoryDrawer({
   translateX,
   overlayOpacity,
   onClose,
+  onNewChat,
   historyItems,
 }: {
   translateX: Animated.Value;
   overlayOpacity: Animated.Value;
   onClose: () => void;
+  onNewChat: () => void;
   historyItems: HistoryItem[];
 }) {
   return (
@@ -181,7 +183,7 @@ function HistoryDrawer({
 
         {/* New chat */}
         <View style={styles.drawerNewChatRow}>
-          <Pressable style={styles.newChatBtn}>
+          <Pressable style={styles.newChatBtn} onPress={onNewChat}>
             <MaterialIcons name="edit" size={16} color="#3F3F46" />
             <Text style={styles.newChatText}>New chat</Text>
           </Pressable>
@@ -371,6 +373,10 @@ export default function ChatScreen() {
           translateX={translateX}
           overlayOpacity={overlayOpacity}
           onClose={closeDrawer}
+          onNewChat={() => {
+            setMessages([]);
+            closeDrawer();
+          }}
           historyItems={historyItems}
         />
       )}
