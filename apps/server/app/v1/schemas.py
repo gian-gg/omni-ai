@@ -19,9 +19,9 @@ class FinanceData(BaseModel):
 class TodoData(BaseModel):
     title: str
     description: str | None = None
-    due_date: str | None = None
+    due_date: _date | None = None
     priority: Literal["low", "medium", "high"] = "medium"
-    date: str | None = None
+    date: _date | None = None
 
 
 class NoteData(BaseModel):
@@ -138,6 +138,36 @@ class TransactionUpdateRequest(BaseModel):
 
 class TransactionListResponse(BaseModel):
     items: list[TransactionResponse]
+    total: int
+    limit: int
+    offset: int
+
+
+class TodoResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    title: str
+    description: str | None
+    due_date: _date | None
+    priority: Literal["low", "medium", "high"]
+    date: _date
+    is_done: bool
+    created_at: datetime
+    updated_at: datetime
+
+
+class TodoUpdateRequest(BaseModel):
+    title: str | None = None
+    description: str | None = None
+    due_date: _date | None = None
+    priority: Literal["low", "medium", "high"] | None = None
+    date: _date | None = None
+    is_done: bool | None = None
+
+
+class TodoListResponse(BaseModel):
+    items: list[TodoResponse]
     total: int
     limit: int
     offset: int

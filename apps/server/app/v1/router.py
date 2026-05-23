@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from app.v1 import auth, chat, health, transactions
+from app.v1 import auth, chat, health, todos, transactions
 
 router = APIRouter()
 
@@ -19,4 +19,8 @@ router.include_router(
 router.include_router(
     transactions.router,
     tags=["transactions"],
+)
+router.include_router(
+    todos.router,
+    tags=["todos"],
 )
