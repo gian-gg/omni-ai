@@ -49,6 +49,13 @@ class ChatSource(BaseModel):
     similarity: float
 
 
+class ToolCall(BaseModel):
+    id: str = ""
+    name: str
+    args: dict[str, object] = Field(default_factory=dict)
+    summary: str = ""
+
+
 class ChatResponse(BaseModel):
     intent: IntentType
     response: str
@@ -58,6 +65,7 @@ class ChatResponse(BaseModel):
     tokens: int = 0
     datetime: datetime
     sources: list[ChatSource] = Field(default_factory=list)
+    tool_calls: list[ToolCall] = Field(default_factory=list)
 
 
 class AuthenticatedUserResponse(BaseModel):

@@ -36,6 +36,15 @@ def _run_chat(prompt: str, authenticated_user: AuthenticatedUser) -> ChatRespons
         tokens=result.tokens,
         datetime=result.datetime,
         sources=result.sources,
+        tool_calls=[
+            {
+                "id": call.get("id", ""),
+                "name": call.get("name", ""),
+                "args": call.get("args") or {},
+                "summary": call.get("summary", ""),
+            }
+            for call in result.tool_calls
+        ],
     )
 
 

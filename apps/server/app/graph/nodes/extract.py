@@ -6,6 +6,7 @@ from typing import Any
 
 from app.graph.nodes._llm_client import call_llm, parse_json_object
 from app.graph.nodes._notes_context import format_notes_context
+from app.graph.nodes._tool_context import format_tool_context
 from app.graph.state import OrchestratorState
 
 logger = logging.getLogger(__name__)
@@ -73,8 +74,10 @@ def _run_extractor(
     prompt: str,
     user_input: str,
     notes_context: list[dict[str, Any]] | None = None,
+    tool_calls: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
-    context_block = format_notes_context(notes_context)
+    blocks = [format_notes_context(notes_context), format_tool_context(tool_calls)]
+    context_block = "".join(b for b in blocks if b)
     full_prompt = f"{context_block}\n{prompt}" if context_block else prompt
     result = call_llm(full_prompt, user_input, json_mode=True)
     if result.content is None:
@@ -132,17 +135,26 @@ def _run_extractor(
 
 def extract_finance_node(state: OrchestratorState) -> dict[str, Any]:
     return _run_extractor(
-        FINANCE_PROMPT, state["user_input"], state.get("notes_context")
+        FINANCE_PROMPT,
+        state["user_input"],
+        state.get("notes_context"),
+        state.get("tool_calls"),
     )
 
 
 def extract_todo_node(state: OrchestratorState) -> dict[str, Any]:
     return _run_extractor(
-        TODO_PROMPT, state["user_input"], state.get("notes_context")
+        TODO_PROMPT,
+        state["user_input"],
+        state.get("notes_context"),
+        state.get("tool_calls"),
     )
 
 
 def extract_note_node(state: OrchestratorState) -> dict[str, Any]:
     return _run_extractor(
-        NOTE_PROMPT, state["user_input"], state.get("notes_context")
+        NOTE_PROMPT,
+        state["user_input"],
+        state.get("notes_context"),
+        state.get("tool_calls"),
     )

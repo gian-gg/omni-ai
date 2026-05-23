@@ -4,6 +4,7 @@ from typing import Any
 
 from app.graph.nodes._llm_client import call_llm, parse_json_object
 from app.graph.nodes._notes_context import format_notes_context
+from app.graph.nodes._tool_context import format_tool_context
 from app.graph.state import OrchestratorState
 
 
@@ -19,7 +20,9 @@ CHAT_WITH_CONTEXT_PROMPT = (
 
 def chat_reply_node(state: OrchestratorState) -> dict[str, Any]:
     user_input = state["user_input"]
-    context_block = format_notes_context(state.get("notes_context"))
+    notes_block = format_notes_context(state.get("notes_context"))
+    tools_block = format_tool_context(state.get("tool_calls"))
+    context_block = "".join(b for b in (notes_block, tools_block) if b)
 
     if not context_block:
         result = call_llm(CHAT_SYSTEM_PROMPT, user_input)

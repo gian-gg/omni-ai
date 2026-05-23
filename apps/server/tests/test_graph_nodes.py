@@ -17,6 +17,7 @@ def _state(
     user_input: str,
     intent: str = "chat",
     notes_context: list[dict] | None = None,
+    tool_calls: list[dict] | None = None,
 ) -> OrchestratorState:
     return {
         "user_id": None,
@@ -30,6 +31,7 @@ def _state(
         "notes_context": notes_context or [],
         "sources": [],
         "used_source_ids": [],
+        "tool_calls": tool_calls or [],
     }
 
 

@@ -57,6 +57,15 @@ class ChatEndpointsTestCase(unittest.TestCase):
                 tokens=42,
                 datetime=datetime(2026, 5, 23, 17, 0, tzinfo=UTC),
                 sources=[{"id": "n1", "title": "Coffee", "similarity": 0.8}],
+                tool_calls=[
+                    {
+                        "id": "t1",
+                        "name": "count_todos",
+                        "args": {"is_done": False},
+                        "result": {"count": 3},
+                        "summary": "Count: 3.",
+                    }
+                ],
             ),
         ) as run_orchestrator_mock:
             client = TestClient(app)
@@ -74,6 +83,14 @@ class ChatEndpointsTestCase(unittest.TestCase):
                 "tokens": 42,
                 "datetime": "2026-05-23T17:00:00Z",
                 "sources": [{"id": "n1", "title": "Coffee", "similarity": 0.8}],
+                "tool_calls": [
+                    {
+                        "id": "t1",
+                        "name": "count_todos",
+                        "args": {"is_done": False},
+                        "summary": "Count: 3.",
+                    }
+                ],
             },
         )
         run_orchestrator_mock.assert_called_once_with("hello", user_id="local-user-123")

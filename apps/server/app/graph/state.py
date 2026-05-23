@@ -19,3 +19,4 @@ class OrchestratorState(TypedDict):
     notes_context: list[dict[str, Any]]
     sources: list[dict[str, Any]]
     used_source_ids: list[str]
+    tool_calls: list[dict[str, Any]]
