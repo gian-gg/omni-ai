@@ -16,3 +16,6 @@ class OrchestratorState(TypedDict):
     cancelled_response: str | None
     data: dict[str, Any] | None
     tokens: Annotated[int, add]
+    notes_context: list[dict[str, Any]]
+    sources: list[dict[str, Any]]
+    used_source_ids: list[str]

@@ -5,6 +5,7 @@ from datetime import date as _date
 from typing import Any
 
 from app.graph.nodes._llm_client import call_llm, parse_json_object
+from app.graph.nodes._notes_context import format_notes_context
 from app.graph.state import OrchestratorState
 
 logger = logging.getLogger(__name__)
@@ -21,6 +22,7 @@ Return JSON only:
   "response": "short, action-oriented proposal (e.g. \"Ooh interesting! Let's add that to your transactions.\") — invite the user to confirm",
   "complete_response": "short message to show after the user approves (e.g. \"Done — added to your transactions.\")",
   "cancelled_response": "short message to show after the user cancels (e.g. \"No worries, didn't save it.\")",
+  "used_source_ids": ["id of each provided note you actually used; empty array if none"],
   "data": {
     "type": "income" | "expense",
     "amount": number,
@@ -39,6 +41,7 @@ Return JSON only:
   "response": "short, action-oriented proposal (e.g. \"Ooh interesting! Let's add that to your transactions.\") — invite the user to confirm",
   "complete_response": "short message to show after the user approves (e.g. \"Done — added to your transactions.\")",
   "cancelled_response": "short message to show after the user cancels (e.g. \"No worries, didn't save it.\")",
+  "used_source_ids": ["id of each provided note you actually used; empty array if none"],
   "data": {
     "title": string,
     "description": string | null,
@@ -56,6 +59,7 @@ Return JSON only:
   "response": "short, action-oriented proposal (e.g. \"Ooh interesting! Let's add that to your transactions.\") — invite the user to confirm",
   "complete_response": "short message to show after the user approves (e.g. \"Done — added to your transactions.\")",
   "cancelled_response": "short message to show after the user cancels (e.g. \"No worries, didn't save it.\")",
+  "used_source_ids": ["id of each provided note you actually used; empty array if none"],
   "data": {
     "title": string | null,
     "content": string,
@@ -65,8 +69,14 @@ Return JSON only:
 }"""
 
 
-def _run_extractor(prompt: str, user_input: str) -> dict[str, Any]:
-    result = call_llm(prompt, user_input, json_mode=True)
+def _run_extractor(
+    prompt: str,
+    user_input: str,
+    notes_context: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    context_block = format_notes_context(notes_context)
+    full_prompt = f"{context_block}\n{prompt}" if context_block else prompt
+    result = call_llm(full_prompt, user_input, json_mode=True)
     if result.content is None:
         return {
             "response": f"(LLM unavailable) Captured: {user_input}",
@@ -74,6 +84,7 @@ def _run_extractor(prompt: str, user_input: str) -> dict[str, Any]:
             "cancelled_response": None,
             "data": None,
             "tokens": result.tokens,
+            "used_source_ids": [],
         }
 
     parsed = parse_json_object(result.content)
@@ -84,6 +95,7 @@ def _run_extractor(prompt: str, user_input: str) -> dict[str, Any]:
             "cancelled_response": None,
             "data": None,
             "tokens": result.tokens,
+            "used_source_ids": [],
         }
 
     def _clean(value: object) -> str | None:
@@ -101,22 +113,36 @@ def _run_extractor(prompt: str, user_input: str) -> dict[str, Any]:
     elif not data.get("date"):
         data["date"] = _today_iso()
 
+    raw_ids = parsed.get("used_source_ids")
+    used_source_ids = (
+        [str(item) for item in raw_ids if isinstance(item, str)]
+        if isinstance(raw_ids, list)
+        else []
+    )
+
     return {
         "response": response_text,
         "complete_response": complete_text,
         "cancelled_response": cancelled_text,
         "data": data,
         "tokens": result.tokens,
+        "used_source_ids": used_source_ids,
     }
 
 
 def extract_finance_node(state: OrchestratorState) -> dict[str, Any]:
-    return _run_extractor(FINANCE_PROMPT, state["user_input"])
+    return _run_extractor(
+        FINANCE_PROMPT, state["user_input"], state.get("notes_context")
+    )
 
 
 def extract_todo_node(state: OrchestratorState) -> dict[str, Any]:
-    return _run_extractor(TODO_PROMPT, state["user_input"])
+    return _run_extractor(
+        TODO_PROMPT, state["user_input"], state.get("notes_context")
+    )
 
 
 def extract_note_node(state: OrchestratorState) -> dict[str, Any]:
-    return _run_extractor(NOTE_PROMPT, state["user_input"])
+    return _run_extractor(
+        NOTE_PROMPT, state["user_input"], state.get("notes_context")
+    )

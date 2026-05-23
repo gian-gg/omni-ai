@@ -1,7 +1,7 @@
-from datetime import datetime
+from datetime import date as _date, datetime
 from typing import Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 IntentType = Literal["finance", "todo", "note", "chat"]
@@ -13,22 +13,22 @@ class FinanceData(BaseModel):
     currency: str = "USD"
     category: str | None = None
     description: str | None = None
-    date: str | None = None
+    date: _date | None = None
 
 
 class TodoData(BaseModel):
     title: str
     description: str | None = None
-    due_date: str | None = None
+    due_date: _date | None = None
     priority: Literal["low", "medium", "high"] = "medium"
-    date: str | None = None
+    date: _date | None = None
 
 
 class NoteData(BaseModel):
     title: str | None = None
     content: str
     tags: list[str] = Field(default_factory=list)
-    date: str | None = None
+    date: _date | None = None
 
 
 class ChatRequest(BaseModel):
@@ -43,6 +43,12 @@ class ChatRequest(BaseModel):
         return cleaned_value
 
 
+class ChatSource(BaseModel):
+    id: str
+    title: str | None = None
+    similarity: float
+
+
 class ChatResponse(BaseModel):
     intent: IntentType
     response: str
@@ -51,6 +57,7 @@ class ChatResponse(BaseModel):
     data: FinanceData | TodoData | NoteData | None = None
     tokens: int = 0
     datetime: datetime
+    sources: list[ChatSource] = Field(default_factory=list)
 
 
 class AuthenticatedUserResponse(BaseModel):
@@ -111,3 +118,110 @@ class AuthSessionResponse(BaseModel):
     token_type: str | None
     expires_in: int | None
     user: SupabaseAuthUserResponse | None
+
+
+class TransactionResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    type: Literal["income", "expense"]
+    amount: float
+    currency: str
+    category: str | None
+    description: str | None
+    date: _date
+    created_at: datetime
+    updated_at: datetime
+
+
+class TransactionUpdateRequest(BaseModel):
+    type: Literal["income", "expense"] | None = None
+    amount: float | None = None
+    currency: str | None = None
+    category: str | None = None
+    description: str | None = None
+    date: _date | None = None
+
+
+class TransactionListResponse(BaseModel):
+    items: list[TransactionResponse]
+    total: int
+    limit: int
+    offset: int
+
+
+class TodoResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    title: str
+    description: str | None
+    due_date: _date | None
+    priority: Literal["low", "medium", "high"]
+    date: _date
+    is_done: bool
+    created_at: datetime
+    updated_at: datetime
+
+
+class TodoUpdateRequest(BaseModel):
+    title: str | None = None
+    description: str | None = None
+    due_date: _date | None = None
+    priority: Literal["low", "medium", "high"] | None = None
+    date: _date | None = None
+    is_done: bool | None = None
+
+
+class TodoListResponse(BaseModel):
+    items: list[TodoResponse]
+    total: int
+    limit: int
+    offset: int
+
+
+class NoteResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    title: str | None
+    content: str
+    tags: list[str]
+    date: _date
+    created_at: datetime
+    updated_at: datetime
+
+
+class NoteUpdateRequest(BaseModel):
+    title: str | None = None
+    content: str | None = None
+    tags: list[str] | None = None
+    date: _date | None = None
+
+
+class NoteListResponse(BaseModel):
+    items: list[NoteResponse]
+    total: int
+    limit: int
+    offset: int
+
+
+class NoteSearchRequest(BaseModel):
+    query: str = Field(..., min_length=1, max_length=2_000)
+    limit: int = Field(default=10, ge=1, le=50)
+
+    @field_validator("query")
+    @classmethod
+    def validate_query(cls, value: str) -> str:
+        cleaned_value = value.strip()
+        if not cleaned_value:
+            raise ValueError("query must not be empty")
+        return cleaned_value
+
+
+class NoteSearchResult(NoteResponse):
+    similarity: float
+
+
+class NoteSearchResponse(BaseModel):
+    items: list[NoteSearchResult]

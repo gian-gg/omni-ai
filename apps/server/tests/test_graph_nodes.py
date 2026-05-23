@@ -13,7 +13,11 @@ from app.graph.nodes.extract import (
 from app.graph.state import OrchestratorState
 
 
-def _state(user_input: str, intent: str = "chat") -> OrchestratorState:
+def _state(
+    user_input: str,
+    intent: str = "chat",
+    notes_context: list[dict] | None = None,
+) -> OrchestratorState:
     return {
         "user_id": None,
         "user_input": user_input,
@@ -23,6 +27,9 @@ def _state(user_input: str, intent: str = "chat") -> OrchestratorState:
         "cancelled_response": None,
         "data": None,
         "tokens": 0,
+        "notes_context": notes_context or [],
+        "sources": [],
+        "used_source_ids": [],
     }
 
 
@@ -111,6 +118,26 @@ class ExtractorTests(unittest.TestCase):
         self.assertIsNone(result["data"])
         self.assertEqual(result["tokens"], 0)
 
+    def test_finance_extractor_injects_notes_context_into_prompt(self) -> None:
+        notes = [
+            {
+                "id": "n1",
+                "title": "Coffee preference",
+                "content": "Spanish coffee from Café X is my favorite",
+                "date": "2026-05-20",
+                "similarity": 0.82,
+            }
+        ]
+        with patch(
+            "app.graph.nodes.extract.call_llm",
+            return_value=_llm(json.dumps({"response": "ok", "data": {}}), tokens=1),
+        ) as call_mock:
+            extract_finance_node(_state("I bought coffee for $4", notes_context=notes))
+
+        system_prompt = call_mock.call_args.args[0]
+        self.assertIn("Spanish coffee", system_prompt)
+        self.assertIn("Relevant context", system_prompt)
+
 
 class ChatReplyTests(unittest.TestCase):
     def test_returns_llm_reply_with_tokens(self) -> None:
@@ -127,6 +154,7 @@ class ChatReplyTests(unittest.TestCase):
                 "cancelled_response": None,
                 "data": None,
                 "tokens": 7,
+                "used_source_ids": [],
             },
         )
 
@@ -141,5 +169,47 @@ class ChatReplyTests(unittest.TestCase):
                 "cancelled_response": None,
                 "data": None,
                 "tokens": 0,
+                "used_source_ids": [],
             },
         )
+
+    def test_parses_used_source_ids_when_context_present(self) -> None:
+        notes = [
+            {
+                "id": "n1",
+                "title": "Pour-over",
+                "content": "92°C, 1:16",
+                "date": "2026-05-19",
+                "similarity": 0.71,
+            }
+        ]
+        payload = json.dumps(
+            {"response": "Here's what your notes say.", "used_source_ids": ["n1"]}
+        )
+        with patch(
+            "app.graph.nodes.chat_reply.call_llm",
+            return_value=_llm(payload, tokens=10),
+        ):
+            result = chat_reply_node(_state("how do I brew?", notes_context=notes))
+        self.assertEqual(result["response"], "Here's what your notes say.")
+        self.assertEqual(result["used_source_ids"], ["n1"])
+
+    def test_injects_notes_context_into_system_prompt(self) -> None:
+        notes = [
+            {
+                "id": "n1",
+                "title": "Pour-over recipe",
+                "content": "92°C, 1:16 ratio, 4 minute pour",
+                "date": "2026-05-19",
+                "similarity": 0.71,
+            }
+        ]
+        with patch(
+            "app.graph.nodes.chat_reply.call_llm",
+            return_value=_llm("Here's what your notes say.", tokens=3),
+        ) as call_mock:
+            chat_reply_node(_state("how do I brew pour over?", notes_context=notes))
+
+        system_prompt = call_mock.call_args.args[0]
+        self.assertIn("Pour-over recipe", system_prompt)
+        self.assertIn("Relevant context", system_prompt)
