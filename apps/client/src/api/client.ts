@@ -168,3 +168,37 @@ export async function listTransactions(
     `/transactions?limit=${limit}&offset=${offset}`,
   );
 }
+
+// ── To-Dos ──────────────────────────────────────────────────────────
+
+export type TodoItem = {
+  id: string;
+  title: string;
+  description: string | null;
+  due_date: string | null;
+  priority: 'low' | 'medium' | 'high';
+  date: string;
+  is_done: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type TodoListResponse = {
+  items: TodoItem[];
+  total: number;
+  limit: number;
+  offset: number;
+};
+
+export async function listTodos(
+  limit = 50,
+  offset = 0,
+): Promise<TodoListResponse> {
+  return apiFetch<TodoListResponse>(`/todos?limit=${limit}&offset=${offset}`);
+}
+
+export async function completeTodoApi(id: string): Promise<TodoItem> {
+  return apiFetch<TodoItem>(`/todos/${id}/complete`, {
+    method: 'POST',
+  });
+}
