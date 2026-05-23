@@ -4,9 +4,12 @@ from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
+from datetime import UTC
+
 from app.core.auth import AuthenticatedUser, VerifiedTokenClaims, get_current_authenticated_user
 from app.main import app
 from app.models.user import User
+from app.services.orchestrator import OrchestratorResult
 
 
 def _build_authenticated_user() -> AuthenticatedUser:
@@ -45,32 +48,31 @@ class ChatEndpointsTestCase(unittest.TestCase):
 
         with patch(
             "app.v1.chat.run_orchestrator",
-            return_value="DeepSeek reply",
+            return_value=OrchestratorResult(
+                intent="chat",
+                response="DeepSeek reply",
+                complete_response=None,
+                cancelled_response=None,
+                data=None,
+                tokens=42,
+                datetime=datetime(2026, 5, 23, 17, 0, tzinfo=UTC),
+            ),
         ) as run_orchestrator_mock:
             client = TestClient(app)
             response = client.post("/api/v1/chat", json={"prompt": "hello"})
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json(), {"response": "DeepSeek reply"})
+        self.assertEqual(
+            response.json(),
+            {
+                "intent": "chat",
+                "response": "DeepSeek reply",
+                "complete_response": None,
+                "cancelled_response": None,
+                "data": None,
+                "tokens": 42,
+                "datetime": "2026-05-23T17:00:00Z",
+            },
+        )
         run_orchestrator_mock.assert_called_once_with("hello", user_id="local-user-123")
 
-    def test_agent_endpoint_returns_401_without_auth(self) -> None:
-        client = TestClient(app)
-        response = client.post("/api/v1/agent", json={"prompt": "hello"})
-
-        self.assertEqual(response.status_code, 401)
-        self.assertEqual(response.json(), {"detail": "Authentication required."})
-
-    def test_agent_endpoint_returns_chat_response_shape_when_authenticated(self) -> None:
-        app.dependency_overrides[get_current_authenticated_user] = _build_authenticated_user
-
-        with patch(
-            "app.v1.chat.run_orchestrator",
-            return_value="DeepSeek reply",
-        ) as run_orchestrator_mock:
-            client = TestClient(app)
-            response = client.post("/api/v1/agent", json={"prompt": "hello"})
-
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json(), {"response": "DeepSeek reply"})
-        run_orchestrator_mock.assert_called_once_with("hello", user_id="local-user-123")

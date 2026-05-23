@@ -1,6 +1,34 @@
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
+
+
+IntentType = Literal["finance", "todo", "note", "chat"]
+
+
+class FinanceData(BaseModel):
+    type: Literal["income", "expense"]
+    amount: float
+    currency: str = "USD"
+    category: str | None = None
+    description: str | None = None
+    date: str | None = None
+
+
+class TodoData(BaseModel):
+    title: str
+    description: str | None = None
+    due_date: str | None = None
+    priority: Literal["low", "medium", "high"] = "medium"
+    date: str | None = None
+
+
+class NoteData(BaseModel):
+    title: str | None = None
+    content: str
+    tags: list[str] = Field(default_factory=list)
+    date: str | None = None
 
 
 class ChatRequest(BaseModel):
@@ -16,7 +44,13 @@ class ChatRequest(BaseModel):
 
 
 class ChatResponse(BaseModel):
+    intent: IntentType
     response: str
+    complete_response: str | None = None
+    cancelled_response: str | None = None
+    data: FinanceData | TodoData | NoteData | None = None
+    tokens: int = 0
+    datetime: datetime
 
 
 class AuthenticatedUserResponse(BaseModel):

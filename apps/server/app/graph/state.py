@@ -1,8 +1,18 @@
-from typing import Literal, TypedDict
+from operator import add
+from typing import Annotated, Any, Literal, TypedDict
+
+
+IntentType = Literal["finance", "todo", "note", "chat"]
+
+VALID_INTENTS: frozenset[str] = frozenset({"finance", "todo", "note", "chat"})
 
 
 class OrchestratorState(TypedDict):
     user_id: str | None
     user_input: str
-    intent: Literal["llm"]
+    intent: IntentType
     response: str
+    complete_response: str | None
+    cancelled_response: str | None
+    data: dict[str, Any] | None
+    tokens: Annotated[int, add]
