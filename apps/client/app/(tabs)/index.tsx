@@ -1,7 +1,9 @@
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { OmniGradient } from '@/constants/theme';
+import { sendMessage } from '@/api/client';
+import { MarkdownText } from '@/components/markdown-text';
 import {
   Animated,
   FlatList,
@@ -67,7 +69,7 @@ function OmniMessage({ text, time }: { text: string; time: string }) {
   return (
     <View style={styles.omniBubble}>
       <Text style={styles.senderLabel}>Omni</Text>
-      <Text style={styles.omniText}>{text}</Text>
+      <MarkdownText style={styles.omniText}>{text}</MarkdownText>
       <Text style={styles.timeText}>{time}</Text>
     </View>
   );
@@ -100,7 +102,7 @@ function OmniStructuredMessage({
   return (
     <View style={styles.omniBubble}>
       <Text style={styles.senderLabel}>Omni</Text>
-      <Text style={styles.omniText}>{summary}</Text>
+      <MarkdownText style={styles.omniText}>{summary}</MarkdownText>
       {records.length > 0 && (
         <View style={styles.structuredCards}>
           {records.map((record) => (
@@ -153,11 +155,13 @@ function HistoryDrawer({
   translateX,
   overlayOpacity,
   onClose,
+  onNewChat,
   historyItems,
 }: {
   translateX: Animated.Value;
   overlayOpacity: Animated.Value;
   onClose: () => void;
+  onNewChat: () => void;
   historyItems: HistoryItem[];
 }) {
   return (
@@ -179,7 +183,7 @@ function HistoryDrawer({
 
         {/* New chat */}
         <View style={styles.drawerNewChatRow}>
-          <Pressable style={styles.newChatBtn}>
+          <Pressable style={styles.newChatBtn} onPress={onNewChat}>
             <MaterialIcons name="edit" size={16} color="#3F3F46" />
             <Text style={styles.newChatText}>New chat</Text>
           </Pressable>
@@ -236,8 +240,10 @@ export default function ChatScreen() {
     { id: '4', title: 'Apartment budget split', preview: 'Tracked shared costs and generated next rent reminder.', date: 'Feb 24', active: false },
   ] */ []);
   const [inputText, setInputText] = useState('');
+  const [isSending, setIsSending] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
 
+  const flatListRef = useRef<FlatList<Message>>(null);
   const translateX = useRef(new Animated.Value(-DRAWER_WIDTH)).current;
   const overlayOpacity = useRef(new Animated.Value(0)).current;
 
@@ -256,6 +262,42 @@ export default function ChatScreen() {
     ]).start(() => setDrawerOpen(false));
   };
 
+  const handleSend = useCallback(async () => {
+    const text = inputText.trim();
+    if (!text || isSending) return;
+
+    const now = new Date();
+    const time = now.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    const userMsgId = `user-${Date.now()}`;
+
+    // Append user message
+    const userMsg: Message = { id: userMsgId, type: 'user', text, time };
+    setMessages((prev) => [...prev, userMsg]);
+    setInputText('');
+    setIsSending(true);
+
+    try {
+      const { response } = await sendMessage(text);
+      const omniMsg: Message = {
+        id: `omni-${Date.now()}`,
+        type: 'omni',
+        text: response,
+        time: new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }),
+      };
+      setMessages((prev) => [...prev, omniMsg]);
+    } catch (err) {
+      const errMsg: Message = {
+        id: `err-${Date.now()}`,
+        type: 'omni',
+        text: `Something went wrong — ${err instanceof Error ? err.message : 'unknown error'}`,
+        time: new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }),
+      };
+      setMessages((prev) => [...prev, errMsg]);
+    } finally {
+      setIsSending(false);
+    }
+  }, [inputText, isSending]);
+
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       {/* Panel button */}
@@ -271,12 +313,16 @@ export default function ChatScreen() {
         keyboardVerticalOffset={0}>
         {/* Message list */}
         <FlatList
+          ref={flatListRef}
           data={messages}
           keyExtractor={(item) => item.id}
           renderItem={renderMessage}
           ListHeaderComponent={<HeroCard />}
           contentContainerStyle={styles.messageList}
           showsVerticalScrollIndicator={false}
+          onContentSizeChange={() =>
+            flatListRef.current?.scrollToEnd({ animated: true })
+          }
         />
 
         {/* Input bar */}
@@ -293,14 +339,18 @@ export default function ChatScreen() {
               onChangeText={setInputText}
               multiline
             />
-            <Pressable style={({ pressed }) => [pressed && { opacity: 0.8 }]}>
+            <Pressable
+              style={({ pressed }) => [pressed && { opacity: 0.8 }]}
+              onPress={handleSend}
+              disabled={isSending}
+            >
               <LinearGradient
                 colors={OmniGradient}
                 start={{ x: 0, y: 0.5 }}
                 end={{ x: 1, y: 0.5 }}
-                style={styles.sendBtn}
+                style={[styles.sendBtn, isSending && { opacity: 0.5 }]}
               >
-                <MaterialIcons name="send" size={18} color="#fff" />
+                <MaterialIcons name={isSending ? 'hourglass-empty' : 'send'} size={18} color="#fff" />
               </LinearGradient>
             </Pressable>
           </View>
@@ -323,6 +373,10 @@ export default function ChatScreen() {
           translateX={translateX}
           overlayOpacity={overlayOpacity}
           onClose={closeDrawer}
+          onNewChat={() => {
+            setMessages([]);
+            closeDrawer();
+          }}
           historyItems={historyItems}
         />
       )}
