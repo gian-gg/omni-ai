@@ -51,6 +51,8 @@ orchestrator_graph = build_orchestrator()
 class OrchestratorResult:
     intent: IntentType
     response: str
+    complete_response: str | None
+    cancelled_response: str | None
     data: dict[str, Any] | None
 
 
@@ -64,11 +66,15 @@ def run_orchestrator(user_input: str, user_id: str | None = None) -> Orchestrato
         "user_input": clean_input,
         "intent": "chat",
         "response": "",
+        "complete_response": None,
+        "cancelled_response": None,
         "data": None,
     }
     final_state = orchestrator_graph.invoke(initial_state)
     return OrchestratorResult(
         intent=final_state["intent"],
         response=final_state["response"],
+        complete_response=final_state.get("complete_response"),
+        cancelled_response=final_state.get("cancelled_response"),
         data=final_state.get("data"),
     )

@@ -18,7 +18,9 @@ FINANCE_PROMPT = """Extract a finance transaction from the user message.
 
 Return JSON only:
 {
-  "response": "short natural-language confirmation to the user",
+  "response": "short, action-oriented proposal (e.g. \"Ooh interesting! Let's add that to your transactions.\") — invite the user to confirm",
+  "complete_response": "short message to show after the user approves (e.g. \"Done — added to your transactions.\")",
+  "cancelled_response": "short message to show after the user cancels (e.g. \"No worries, didn't save it.\")",
   "data": {
     "type": "income" | "expense",
     "amount": number,
@@ -34,7 +36,9 @@ TODO_PROMPT = """Extract a todo item from the user message.
 
 Return JSON only:
 {
-  "response": "short natural-language confirmation to the user",
+  "response": "short, action-oriented proposal (e.g. \"Ooh interesting! Let's add that to your transactions.\") — invite the user to confirm",
+  "complete_response": "short message to show after the user approves (e.g. \"Done — added to your transactions.\")",
+  "cancelled_response": "short message to show after the user cancels (e.g. \"No worries, didn't save it.\")",
   "data": {
     "title": string,
     "description": string | null,
@@ -49,7 +53,9 @@ NOTE_PROMPT = """Extract a note/idea from the user message.
 
 Return JSON only:
 {
-  "response": "short natural-language confirmation to the user",
+  "response": "short, action-oriented proposal (e.g. \"Ooh interesting! Let's add that to your transactions.\") — invite the user to confirm",
+  "complete_response": "short message to show after the user approves (e.g. \"Done — added to your transactions.\")",
+  "cancelled_response": "short message to show after the user cancels (e.g. \"No worries, didn't save it.\")",
   "data": {
     "title": string | null,
     "content": string,
@@ -64,16 +70,28 @@ def _run_extractor(prompt: str, user_input: str) -> dict[str, Any]:
     if raw is None:
         return {
             "response": f"(LLM unavailable) Captured: {user_input}",
+            "complete_response": None,
+            "cancelled_response": None,
             "data": None,
         }
 
     parsed = parse_json_object(raw)
     if parsed is None:
-        return {"response": raw, "data": None}
+        return {
+            "response": raw,
+            "complete_response": None,
+            "cancelled_response": None,
+            "data": None,
+        }
 
-    response_text = parsed.get("response")
-    if not isinstance(response_text, str) or not response_text.strip():
-        response_text = f"Captured: {user_input}"
+    def _clean(value: object) -> str | None:
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+        return None
+
+    response_text = _clean(parsed.get("response")) or f"Captured: {user_input}"
+    complete_text = _clean(parsed.get("complete_response"))
+    cancelled_text = _clean(parsed.get("cancelled_response"))
 
     data = parsed.get("data")
     if not isinstance(data, dict):
@@ -81,7 +99,12 @@ def _run_extractor(prompt: str, user_input: str) -> dict[str, Any]:
     elif not data.get("date"):
         data["date"] = _today_iso()
 
-    return {"response": response_text, "data": data}
+    return {
+        "response": response_text,
+        "complete_response": complete_text,
+        "cancelled_response": cancelled_text,
+        "data": data,
+    }
 
 
 def extract_finance_node(state: OrchestratorState) -> dict[str, Any]:

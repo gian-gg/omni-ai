@@ -30,6 +30,8 @@ def _run_chat(prompt: str, authenticated_user: AuthenticatedUser) -> ChatRespons
     return ChatResponse(
         intent=result.intent,
         response=result.response,
+        complete_response=result.complete_response,
+        cancelled_response=result.cancelled_response,
         data=result.data,
     )
 

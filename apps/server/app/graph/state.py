@@ -11,4 +11,6 @@ class OrchestratorState(TypedDict):
     user_input: str
     intent: IntentType
     response: str
+    complete_response: str | None
+    cancelled_response: str | None
     data: dict[str, Any] | None

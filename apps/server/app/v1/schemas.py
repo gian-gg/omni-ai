@@ -46,6 +46,8 @@ class ChatRequest(BaseModel):
 class ChatResponse(BaseModel):
     intent: IntentType
     response: str
+    complete_response: str | None = None
+    cancelled_response: str | None = None
     data: FinanceData | TodoData | NoteData | None = None
 
 

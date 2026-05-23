@@ -47,7 +47,11 @@ class ChatEndpointsTestCase(unittest.TestCase):
         with patch(
             "app.v1.chat.run_orchestrator",
             return_value=OrchestratorResult(
-                intent="chat", response="DeepSeek reply", data=None
+                intent="chat",
+                response="DeepSeek reply",
+                complete_response=None,
+                cancelled_response=None,
+                data=None,
             ),
         ) as run_orchestrator_mock:
             client = TestClient(app)
@@ -56,7 +60,13 @@ class ChatEndpointsTestCase(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(
             response.json(),
-            {"intent": "chat", "response": "DeepSeek reply", "data": None},
+            {
+                "intent": "chat",
+                "response": "DeepSeek reply",
+                "complete_response": None,
+                "cancelled_response": None,
+                "data": None,
+            },
         )
         run_orchestrator_mock.assert_called_once_with("hello", user_id="local-user-123")
 

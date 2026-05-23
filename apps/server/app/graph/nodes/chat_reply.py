@@ -13,8 +13,10 @@ def chat_reply_node(state: OrchestratorState) -> dict[str, Any]:
     user_input = state["user_input"]
     reply = call_llm(CHAT_SYSTEM_PROMPT, user_input)
     if reply is None:
-        return {
-            "response": f"(LLM unavailable) You said: {user_input}",
-            "data": None,
-        }
-    return {"response": reply, "data": None}
+        reply = f"(LLM unavailable) You said: {user_input}"
+    return {
+        "response": reply,
+        "complete_response": None,
+        "cancelled_response": None,
+        "data": None,
+    }
