@@ -5,6 +5,7 @@ from app.graph.nodes.extract import (
     extract_note_node,
     extract_todo_node,
 )
+from app.graph.nodes.query import query_node
 from app.graph.nodes.retrieve import retrieve_node
 
 __all__ = [
@@ -14,5 +15,6 @@ __all__ = [
     "extract_finance_node",
     "extract_note_node",
     "extract_todo_node",
+    "query_node",
     "retrieve_node",
 ]

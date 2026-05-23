@@ -24,6 +24,7 @@ def _state(user_id: str | None = "u1") -> OrchestratorState:
         "notes_context": [],
         "sources": [],
         "used_source_ids": [],
+        "tool_calls": [],
     }
 
 

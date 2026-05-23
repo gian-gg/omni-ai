@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, TypeGuard
 
 import httpx
@@ -16,6 +16,7 @@ logger = logging.getLogger(__name__)
 class LLMCallResult:
     content: str | None
     tokens: int = 0
+    tool_calls: list[dict[str, Any]] = field(default_factory=list)
 
 
 def _is_string_key_dict(value: object) -> TypeGuard[dict[str, object]]:
@@ -57,12 +58,61 @@ def _extract_tokens(payload: object) -> int:
     return 0
 
 
+def _extract_tool_calls(payload: object) -> list[dict[str, Any]]:
+    if not _is_string_key_dict(payload):
+        return []
+    choices = payload.get("choices")
+    if not isinstance(choices, list) or not choices:
+        return []
+    first = choices[0]
+    if not _is_string_key_dict(first):
+        return []
+    message = first.get("message")
+    if not _is_string_key_dict(message):
+        return []
+    tool_calls = message.get("tool_calls")
+    if not isinstance(tool_calls, list):
+        return []
+
+    parsed: list[dict[str, Any]] = []
+    for call in tool_calls:
+        if not _is_string_key_dict(call):
+            continue
+        fn = call.get("function")
+        if not _is_string_key_dict(fn):
+            continue
+        name = fn.get("name")
+        raw_args = fn.get("arguments")
+        if not isinstance(name, str):
+            continue
+        args: dict[str, Any] = {}
+        if isinstance(raw_args, str):
+            try:
+                decoded = json.loads(raw_args)
+                if isinstance(decoded, dict):
+                    args = decoded
+            except json.JSONDecodeError:
+                logger.warning("Tool call arguments were not valid JSON: %r", raw_args)
+                continue
+        elif isinstance(raw_args, dict):
+            args = raw_args
+        parsed.append(
+            {
+                "id": call.get("id") if isinstance(call.get("id"), str) else "",
+                "name": name,
+                "args": args,
+            }
+        )
+    return parsed
+
+
 def call_llm(
     system_prompt: str,
     user_input: str,
     *,
     json_mode: bool = False,
     temperature: float = 0.2,
+    tools: list[dict[str, Any]] | None = None,
 ) -> LLMCallResult:
     """Call the configured LLM. Returns content + token usage; content is None on failure."""
     api_key = settings.llm_api_key
@@ -85,6 +135,9 @@ def call_llm(
     }
     if json_mode:
         payload["response_format"] = {"type": "json_object"}
+    if tools:
+        payload["tools"] = tools
+        payload["tool_choice"] = "auto"
 
     try:
         with httpx.Client(timeout=30) as client:
@@ -101,6 +154,7 @@ def call_llm(
     return LLMCallResult(
         content=_extract_content(response_data),
         tokens=_extract_tokens(response_data),
+        tool_calls=_extract_tool_calls(response_data),
     )
 
 

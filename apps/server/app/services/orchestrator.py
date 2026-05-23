@@ -12,6 +12,7 @@ from app.graph.nodes import (
     extract_finance_node,
     extract_note_node,
     extract_todo_node,
+    query_node,
     retrieve_node,
     route_by_intent,
 )
@@ -23,6 +24,7 @@ def build_orchestrator():
 
     graph_builder.add_node("classify", classify_node)
     graph_builder.add_node("retrieve", retrieve_node)
+    graph_builder.add_node("query", query_node)
     graph_builder.add_node("chat_reply", chat_reply_node)
     graph_builder.add_node("extract_finance", extract_finance_node)
     graph_builder.add_node("extract_todo", extract_todo_node)
@@ -30,8 +32,9 @@ def build_orchestrator():
 
     graph_builder.add_edge(START, "classify")
     graph_builder.add_edge("classify", "retrieve")
+    graph_builder.add_edge("retrieve", "query")
     graph_builder.add_conditional_edges(
-        "retrieve",
+        "query",
         route_by_intent,
         {
             "chat_reply": "chat_reply",
@@ -61,6 +64,7 @@ class OrchestratorResult:
     tokens: int
     datetime: datetime
     sources: list[dict[str, Any]]
+    tool_calls: list[dict[str, Any]]
 
 
 def run_orchestrator(user_input: str, user_id: str | None = None) -> OrchestratorResult:
@@ -80,6 +84,7 @@ def run_orchestrator(user_input: str, user_id: str | None = None) -> Orchestrato
         "notes_context": [],
         "sources": [],
         "used_source_ids": [],
+        "tool_calls": [],
     }
     final_state = orchestrator_graph.invoke(initial_state)
 
@@ -96,4 +101,5 @@ def run_orchestrator(user_input: str, user_id: str | None = None) -> Orchestrato
         tokens=int(final_state.get("tokens", 0)),
         datetime=datetime.now(UTC),
         sources=filtered_sources,
+        tool_calls=list(final_state.get("tool_calls") or []),
     )
