@@ -21,6 +21,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { OmniColors, OmniFonts, OmniGradient } from '@/constants/theme';
 import {
   listNotes,
+  createNote,
   updateNote,
   deleteNote,
   NoteItem,
@@ -195,12 +196,14 @@ function EditNoteModal({
   onClose,
   onSave,
   onDelete,
+  isAdding,
 }: {
   item: NoteItem | null;
   visible: boolean;
   onClose: () => void;
-  onSave: (id: string, payload: NoteUpdatePayload) => void;
+  onSave: (id: string | null, payload: NoteUpdatePayload) => void;
   onDelete: (id: string) => void;
+  isAdding?: boolean;
 }) {
   const [editFields, setEditFields] = useState({
     title: '',
@@ -213,10 +216,15 @@ function EditNoteModal({
         title: item.title || '',
         content: item.content || '',
       });
+    } else if (isAdding) {
+      setEditFields({
+        title: '',
+        content: '',
+      });
     }
-  }, [item]);
+  }, [item, isAdding]);
 
-  if (!item) return null;
+  if (!item && !isAdding) return null;
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
@@ -230,10 +238,12 @@ function EditNoteModal({
             <View style={styles.modalHandle} />
 
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-              <Text style={[styles.modalTitle, { marginBottom: 0 }]}>Edit Thought</Text>
-              <Pressable onPress={() => onDelete(item.id)}>
-                <MaterialIcons name="delete-outline" size={24} color="#EF4444" />
-              </Pressable>
+              <Text style={[styles.modalTitle, { marginBottom: 0 }]}>{isAdding ? 'Add Thought' : 'Edit Thought'}</Text>
+              {!isAdding && item && (
+                <Pressable onPress={() => onDelete(item.id)}>
+                  <MaterialIcons name="delete-outline" size={24} color="#EF4444" />
+                </Pressable>
+              )}
             </View>
 
             <Text style={styles.editLabel}>Title</Text>
@@ -267,7 +277,7 @@ function EditNoteModal({
                 ]}
                 disabled={!editFields.content.trim()}
                 onPress={() => {
-                  onSave(item.id, {
+                  onSave(item ? item.id : null, {
                     title: editFields.title || null,
                     content: editFields.content,
                   });
@@ -331,6 +341,7 @@ export default function ThoughtsScreen() {
   const [error, setError] = useState<string | null>(null);
   const [editingItem, setEditingItem] = useState<NoteItem | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [isAdding, setIsAdding] = useState(false);
 
   const fetchThoughts = useCallback(async (isRefresh = false) => {
     try {
@@ -354,13 +365,19 @@ export default function ThoughtsScreen() {
     fetchThoughts();
   }, [fetchThoughts]);
 
-  const handleUpdate = async (id: string, payload: NoteUpdatePayload) => {
+  const handleUpdate = async (id: string | null, payload: NoteUpdatePayload) => {
     try {
-      const updated = await updateNote(id, payload);
-      setThoughts((prev) => prev.map((t) => (t.id === id ? updated : t)));
-      setEditingItem(null);
+      if (id) {
+        const updated = await updateNote(id, payload);
+        setThoughts((prev) => prev.map((t) => (t.id === id ? updated : t)));
+        setEditingItem(null);
+      } else {
+        const created = await createNote(payload);
+        setThoughts((prev) => [created, ...prev]);
+        setIsAdding(false);
+      }
     } catch (err) {
-      Alert.alert('Error', err instanceof Error ? err.message : 'Failed to update thought');
+      Alert.alert('Error', err instanceof Error ? err.message : 'Failed to save thought');
     }
   };
 
@@ -478,10 +495,24 @@ export default function ThoughtsScreen() {
         }
       />
 
+      <Pressable
+        onPress={() => setIsAdding(true)}
+        style={({ pressed }) => [
+          styles.fab,
+          pressed && { opacity: 0.8 }
+        ]}
+      >
+        <MaterialIcons name="add" size={24} color="#fff" />
+      </Pressable>
+
       <EditNoteModal
         item={editingItem}
-        visible={editingItem !== null}
-        onClose={() => setEditingItem(null)}
+        visible={editingItem !== null || isAdding}
+        isAdding={isAdding}
+        onClose={() => {
+          setEditingItem(null);
+          setIsAdding(false);
+        }}
         onSave={handleUpdate}
         onDelete={(id) => setDeletingId(id)}
       />
@@ -513,6 +544,24 @@ const styles = StyleSheet.create({
     fontFamily: OmniFonts.heading,
     fontSize: 22,
     color: OmniColors.ink,
+  },
+
+  // FAB
+  fab: {
+    position: 'absolute',
+    bottom: 32,
+    right: 24,
+    width: 48,
+    height: 48,
+    borderRadius: 12,
+    backgroundColor: OmniColors.ink,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 5,
   },
 
   // Summary banner

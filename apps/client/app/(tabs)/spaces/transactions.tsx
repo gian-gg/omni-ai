@@ -21,6 +21,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { OmniColors, OmniFonts, OmniGradient } from '@/constants/theme';
 import {
   listTransactions,
+  createTransaction,
   updateTransaction,
   deleteTransaction,
   type TransactionItem,
@@ -213,12 +214,14 @@ function EditTransactionModal({
   onClose,
   onSave,
   onDelete,
+  isAdding,
 }: {
   item: TransactionItem | null;
   visible: boolean;
   onClose: () => void;
-  onSave: (id: string, payload: TransactionUpdatePayload) => void;
+  onSave: (id: string | null, payload: TransactionUpdatePayload) => void;
   onDelete: (id: string) => void;
+  isAdding?: boolean;
 }) {
   const [editFields, setEditFields] = useState({
     type: 'expense' as 'income' | 'expense',
@@ -235,10 +238,17 @@ function EditTransactionModal({
         description: item.description || '',
         category: item.category || '',
       });
+    } else if (isAdding) {
+      setEditFields({
+        type: 'expense',
+        amount: 0,
+        description: '',
+        category: '',
+      });
     }
-  }, [item]);
+  }, [item, isAdding]);
 
-  if (!item) return null;
+  if (!item && !isAdding) return null;
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
@@ -252,10 +262,12 @@ function EditTransactionModal({
             <View style={styles.modalHandle} />
 
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-              <Text style={[styles.modalTitle, { marginBottom: 0 }]}>Edit Transaction</Text>
-              <Pressable onPress={() => onDelete(item.id)}>
-                <MaterialIcons name="delete-outline" size={24} color="#EF4444" />
-              </Pressable>
+              <Text style={[styles.modalTitle, { marginBottom: 0 }]}>{isAdding ? 'Add Transaction' : 'Edit Transaction'}</Text>
+              {!isAdding && item && (
+                <Pressable onPress={() => onDelete(item.id)}>
+                  <MaterialIcons name="delete-outline" size={24} color="#EF4444" />
+                </Pressable>
+              )}
             </View>
 
             {/* Amount display */}
@@ -327,7 +339,7 @@ function EditTransactionModal({
               <Pressable
                 style={styles.editSaveBtn}
                 onPress={() =>
-                  onSave(item.id, {
+                  onSave(item ? item.id : null, {
                     type: editFields.type,
                     amount: editFields.amount,
                     description: editFields.description || null,
@@ -394,6 +406,8 @@ export default function TransactionsScreen() {
   const [editingItem, setEditingItem] = useState<TransactionItem | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
+  const [isAdding, setIsAdding] = useState(false);
+
   const fetchTransactions = useCallback(async (isRefresh = false) => {
     try {
       if (isRefresh) {
@@ -416,15 +430,21 @@ export default function TransactionsScreen() {
     fetchTransactions();
   }, [fetchTransactions]);
 
-  const handleUpdate = async (id: string, payload: TransactionUpdatePayload) => {
+  const handleUpdate = async (id: string | null, payload: TransactionUpdatePayload) => {
     try {
-      const updated = await updateTransaction(id, payload);
-      setTransactions((prev) =>
-        prev.map((tx) => (tx.id === id ? updated : tx)),
-      );
-      setEditingItem(null);
+      if (id) {
+        const updated = await updateTransaction(id, payload);
+        setTransactions((prev) =>
+          prev.map((tx) => (tx.id === id ? updated : tx)),
+        );
+        setEditingItem(null);
+      } else {
+        const created = await createTransaction(payload);
+        setTransactions((prev) => [created, ...prev]);
+        setIsAdding(false);
+      }
     } catch (err) {
-      Alert.alert('Error', err instanceof Error ? err.message : 'Failed to update transaction');
+      Alert.alert('Error', err instanceof Error ? err.message : 'Failed to save transaction');
     }
   };
 
@@ -522,10 +542,24 @@ export default function TransactionsScreen() {
         }
       />
 
+      <Pressable
+        onPress={() => setIsAdding(true)}
+        style={({ pressed }) => [
+          styles.fab,
+          pressed && { opacity: 0.8 }
+        ]}
+      >
+        <MaterialIcons name="add" size={24} color="#fff" />
+      </Pressable>
+
       <EditTransactionModal
         item={editingItem}
-        visible={editingItem !== null}
-        onClose={() => setEditingItem(null)}
+        visible={editingItem !== null || isAdding}
+        isAdding={isAdding}
+        onClose={() => {
+          setEditingItem(null);
+          setIsAdding(false);
+        }}
         onSave={handleUpdate}
         onDelete={(id) => setDeletingId(id)}
       />
@@ -557,6 +591,24 @@ const styles = StyleSheet.create({
     fontFamily: OmniFonts.heading,
     fontSize: 22,
     color: OmniColors.ink,
+  },
+
+  // FAB
+  fab: {
+    position: 'absolute',
+    bottom: 32,
+    right: 24,
+    width: 48,
+    height: 48,
+    borderRadius: 12,
+    backgroundColor: OmniColors.ink,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 5,
   },
 
   // Overview

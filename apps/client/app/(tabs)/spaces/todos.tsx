@@ -22,6 +22,7 @@ import { OmniColors, OmniFonts, OmniGradient } from '@/constants/theme';
 import {
   listTodos,
   completeTodoApi,
+  createTodo,
   updateTodo,
   deleteTodo,
   TodoItem,
@@ -208,12 +209,14 @@ function EditTodoModal({
   onClose,
   onSave,
   onDelete,
+  isAdding,
 }: {
   item: TodoItem | null;
   visible: boolean;
   onClose: () => void;
-  onSave: (id: string, payload: TodoUpdatePayload) => void;
+  onSave: (id: string | null, payload: TodoUpdatePayload) => void;
   onDelete: (id: string) => void;
+  isAdding?: boolean;
 }) {
   const [editFields, setEditFields] = useState({
     title: '',
@@ -230,10 +233,17 @@ function EditTodoModal({
         due_date: item.due_date || '',
         priority: item.priority,
       });
+    } else if (isAdding) {
+      setEditFields({
+        title: '',
+        description: '',
+        due_date: '',
+        priority: 'medium',
+      });
     }
-  }, [item]);
+  }, [item, isAdding]);
 
-  if (!item) return null;
+  if (!item && !isAdding) return null;
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
@@ -247,10 +257,12 @@ function EditTodoModal({
             <View style={styles.modalHandle} />
 
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-              <Text style={[styles.modalTitle, { marginBottom: 0 }]}>Edit To-Do</Text>
-              <Pressable onPress={() => onDelete(item.id)}>
-                <MaterialIcons name="delete-outline" size={24} color="#EF4444" />
-              </Pressable>
+              <Text style={[styles.modalTitle, { marginBottom: 0 }]}>{isAdding ? 'Add To-Do' : 'Edit To-Do'}</Text>
+              {!isAdding && item && (
+                <Pressable onPress={() => onDelete(item.id)}>
+                  <MaterialIcons name="delete-outline" size={24} color="#EF4444" />
+                </Pressable>
+              )}
             </View>
 
             <Text style={styles.editLabel}>Title</Text>
@@ -310,7 +322,7 @@ function EditTodoModal({
               <Pressable
                 style={styles.editSaveBtn}
                 onPress={() =>
-                  onSave(item.id, {
+                  onSave(item ? item.id : null, {
                     title: editFields.title,
                     description: editFields.description || null,
                     due_date: editFields.due_date || null,
@@ -376,6 +388,7 @@ export default function TodosScreen() {
   const [error, setError] = useState<string | null>(null);
   const [editingItem, setEditingItem] = useState<TodoItem | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [isAdding, setIsAdding] = useState(false);
 
   const fetchTodos = useCallback(async (isRefresh = false) => {
     try {
@@ -426,13 +439,19 @@ export default function TodosScreen() {
     }
   };
 
-  const handleUpdate = async (id: string, payload: TodoUpdatePayload) => {
+  const handleUpdate = async (id: string | null, payload: TodoUpdatePayload) => {
     try {
-      const updated = await updateTodo(id, payload);
-      setTodos((prev) => prev.map((t) => (t.id === id ? updated : t)));
-      setEditingItem(null);
+      if (id) {
+        const updated = await updateTodo(id, payload);
+        setTodos((prev) => prev.map((t) => (t.id === id ? updated : t)));
+        setEditingItem(null);
+      } else {
+        const created = await createTodo(payload);
+        setTodos((prev) => [created, ...prev]);
+        setIsAdding(false);
+      }
     } catch (err) {
-      Alert.alert('Error', err instanceof Error ? err.message : 'Failed to update task');
+      Alert.alert('Error', err instanceof Error ? err.message : 'Failed to save to-do');
     }
   };
 
@@ -538,10 +557,24 @@ export default function TodosScreen() {
         }
       />
 
+      <Pressable
+        onPress={() => setIsAdding(true)}
+        style={({ pressed }) => [
+          styles.fab,
+          pressed && { opacity: 0.8 }
+        ]}
+      >
+        <MaterialIcons name="add" size={24} color="#fff" />
+      </Pressable>
+
       <EditTodoModal
         item={editingItem}
-        visible={editingItem !== null}
-        onClose={() => setEditingItem(null)}
+        visible={editingItem !== null || isAdding}
+        isAdding={isAdding}
+        onClose={() => {
+          setEditingItem(null);
+          setIsAdding(false);
+        }}
         onSave={handleUpdate}
         onDelete={(id) => setDeletingId(id)}
       />
@@ -573,6 +606,24 @@ const styles = StyleSheet.create({
     fontFamily: OmniFonts.heading,
     fontSize: 22,
     color: OmniColors.ink,
+  },
+
+  // FAB
+  fab: {
+    position: 'absolute',
+    bottom: 32,
+    right: 24,
+    width: 48,
+    height: 48,
+    borderRadius: 12,
+    backgroundColor: OmniColors.ink,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 5,
   },
 
   // Summary banner

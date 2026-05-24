@@ -122,22 +122,22 @@ export async function sendMessage(prompt: string): Promise<ChatResponse> {
   });
 }
 
-export async function createTransaction(payload: any): Promise<any> {
-  return apiFetch<any>('/transactions', {
+export async function createTransaction(payload: TransactionUpdatePayload): Promise<TransactionItem> {
+  return apiFetch<TransactionItem>('/transactions', {
     method: 'POST',
     body: JSON.stringify(payload),
   });
 }
 
-export async function createTodo(payload: any): Promise<any> {
-  return apiFetch<any>('/todos', {
+export async function createTodo(payload: TodoUpdatePayload): Promise<TodoItem> {
+  return apiFetch<TodoItem>('/todos', {
     method: 'POST',
     body: JSON.stringify(payload),
   });
 }
 
-export async function createNote(payload: any): Promise<any> {
-  return apiFetch<any>('/notes', {
+export async function createNote(payload: NoteUpdatePayload): Promise<NoteItem> {
+  return apiFetch<NoteItem>('/notes', {
     method: 'POST',
     body: JSON.stringify(payload),
   });
