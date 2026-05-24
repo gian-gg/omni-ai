@@ -45,16 +45,12 @@ function SummaryBanner({ total, pinned }: { total: number; pinned: number }) {
     >
       <View style={styles.bannerRow}>
         <View style={styles.bannerStat}>
-          <Text style={styles.bannerStatLabel}>Captured</Text>
+          <Text style={styles.bannerStatLabel}>Saved</Text>
           <Text style={styles.bannerStatValue}>{total}</Text>
         </View>
         <View style={styles.bannerStat}>
           <Text style={styles.bannerStatLabel}>Pinned</Text>
           <Text style={styles.bannerStatValue}>{pinned}</Text>
-        </View>
-        <View style={styles.bannerStat}>
-          <Text style={styles.bannerStatLabel}>Converted</Text>
-          <Text style={styles.bannerStatValue}>{Math.max(0, total - pinned)}</Text>
         </View>
       </View>
     </LinearGradient>
