@@ -268,63 +268,53 @@ export default function TodosScreen() {
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
-      {loading ? (
-        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-          <ActivityIndicator size="large" color={OmniColors.ink} />
-        </View>
-      ) : error ? (
-        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24, gap: 12 }}>
-          <MaterialIcons name="error-outline" size={48} color="#EF4444" />
-          <Text style={{ fontFamily: OmniFonts.bodySemiBold, fontSize: 16, color: OmniColors.charcoal, textAlign: 'center' }}>
-            {error}
-          </Text>
-          <Pressable
-            style={({ pressed }) => [{
-              backgroundColor: OmniColors.ink,
-              borderRadius: 12,
-              paddingHorizontal: 20,
-              paddingVertical: 10,
-              opacity: pressed ? 0.9 : 1
-            }]}
-            onPress={() => fetchTodos()}
-          >
-            <Text style={{ fontFamily: OmniFonts.bodySemiBold, fontSize: 14, color: '#fff' }}>Retry</Text>
-          </Pressable>
-        </View>
-      ) : (
-        <FlatList
-          data={displayed}
-          keyExtractor={(item) => item.id}
-          renderItem={({ item }) => (
-            <TodoCard item={item} onToggle={() => toggleTodo(item.id)} />
-          )}
-          contentContainerStyle={styles.listContent}
-          showsVerticalScrollIndicator={false}
-          refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={() => fetchTodos(true)} tintColor={OmniColors.ink} />
-          }
-          ListEmptyComponent={
+      <FlatList
+        data={displayed}
+        keyExtractor={(item) => item.id}
+        renderItem={({ item }) => (
+          <TodoCard item={item} onToggle={() => toggleTodo(item.id)} />
+        )}
+        contentContainerStyle={styles.listContent}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={() => fetchTodos(true)} tintColor={OmniColors.ink} />
+        }
+        ListHeaderComponent={
+          <View style={styles.header}>
+            <Pressable style={styles.backBtn} onPress={() => router.back()}>
+              <MaterialIcons name="arrow-back" size={14} color="#71717A" />
+              <Text style={styles.backText}>back</Text>
+            </Pressable>
+
+            <Text style={styles.screenTitle}>To Do List</Text>
+
+            <SummaryBanner dueToday={dueTodayCount} completed={completedCount} />
+            <FilterTabs active={activeTab} onSelect={setActiveTab} />
+            <SearchBar value={search} onChangeText={setSearch} />
+          </View>
+        }
+        ListEmptyComponent={
+          loading ? (
+            <View style={styles.emptyState}>
+              <ActivityIndicator size="large" color={OmniColors.ink} />
+            </View>
+          ) : error ? (
+            <View style={styles.emptyState}>
+              <Text style={styles.emptyText}>{error}</Text>
+              <Pressable onPress={() => fetchTodos()}>
+                <Text style={{ fontFamily: OmniFonts.bodySemiBold, fontSize: 14, color: OmniColors.ink, marginTop: 4 }}>
+                  Tap to retry
+                </Text>
+              </Pressable>
+            </View>
+          ) : (
             <View style={styles.emptyState}>
               <Text style={styles.emptyText}>No tasks found</Text>
               <Text style={styles.emptySubtext}>Tasks created through chat will appear here.</Text>
             </View>
-          }
-          ListHeaderComponent={
-            <View style={styles.header}>
-              <Pressable style={styles.backBtn} onPress={() => router.back()}>
-                <MaterialIcons name="arrow-back" size={14} color="#71717A" />
-                <Text style={styles.backText}>back</Text>
-              </Pressable>
-
-              <Text style={styles.screenTitle}>To Do List</Text>
-
-              <SummaryBanner dueToday={dueTodayCount} completed={completedCount} />
-              <FilterTabs active={activeTab} onSelect={setActiveTab} />
-              <SearchBar value={search} onChangeText={setSearch} />
-            </View>
-          }
-        />
-      )}
+          )
+        }
+      />
     </SafeAreaView>
   );
 }

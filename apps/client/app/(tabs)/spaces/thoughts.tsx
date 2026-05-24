@@ -218,61 +218,51 @@ export default function ThoughtsScreen() {
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
-      {loading ? (
-        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-          <ActivityIndicator size="large" color={OmniColors.ink} />
-        </View>
-      ) : error ? (
-        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24, gap: 12 }}>
-          <MaterialIcons name="error-outline" size={48} color="#EF4444" />
-          <Text style={{ fontFamily: OmniFonts.bodySemiBold, fontSize: 16, color: OmniColors.charcoal, textAlign: 'center' }}>
-            {error}
-          </Text>
-          <Pressable
-            style={({ pressed }) => [{
-              backgroundColor: OmniColors.ink,
-              borderRadius: 12,
-              paddingHorizontal: 20,
-              paddingVertical: 10,
-              opacity: pressed ? 0.9 : 1
-            }]}
-            onPress={() => fetchThoughts()}
-          >
-            <Text style={{ fontFamily: OmniFonts.bodySemiBold, fontSize: 14, color: '#fff' }}>Retry</Text>
-          </Pressable>
-        </View>
-      ) : (
-        <FlatList
-          data={displayed}
-          keyExtractor={(item) => item.id}
-          renderItem={({ item }) => <ThoughtCard item={item} />}
-          contentContainerStyle={styles.listContent}
-          showsVerticalScrollIndicator={false}
-          refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={() => fetchThoughts(true)} tintColor={OmniColors.ink} />
-          }
-          ListEmptyComponent={
+      <FlatList
+        data={displayed}
+        keyExtractor={(item) => item.id}
+        renderItem={({ item }) => <ThoughtCard item={item} />}
+        contentContainerStyle={styles.listContent}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={() => fetchThoughts(true)} tintColor={OmniColors.ink} />
+        }
+        ListHeaderComponent={
+          <View style={styles.header}>
+            <Pressable style={styles.backBtn} onPress={() => router.back()}>
+              <MaterialIcons name="arrow-back" size={14} color="#71717A" />
+              <Text style={styles.backText}>back</Text>
+            </Pressable>
+
+            <Text style={styles.screenTitle}>Thoughts</Text>
+
+            <SummaryBanner total={totalCount} pinned={pinnedCount} />
+            <FilterTabs active={activeTab} onSelect={setActiveTab} />
+            <SearchBar value={search} onChangeText={setSearch} />
+          </View>
+        }
+        ListEmptyComponent={
+          loading ? (
+            <View style={styles.emptyState}>
+              <ActivityIndicator size="large" color={OmniColors.ink} />
+            </View>
+          ) : error ? (
+            <View style={styles.emptyState}>
+              <Text style={styles.emptyText}>{error}</Text>
+              <Pressable onPress={() => fetchThoughts()}>
+                <Text style={{ fontFamily: OmniFonts.bodySemiBold, fontSize: 14, color: OmniColors.ink, marginTop: 4 }}>
+                  Tap to retry
+                </Text>
+              </Pressable>
+            </View>
+          ) : (
             <View style={styles.emptyState}>
               <Text style={styles.emptyText}>No thoughts found</Text>
               <Text style={styles.emptySubtext}>Thoughts created through chat will appear here.</Text>
             </View>
-          }
-          ListHeaderComponent={
-            <View style={styles.header}>
-              <Pressable style={styles.backBtn} onPress={() => router.back()}>
-                <MaterialIcons name="arrow-back" size={14} color="#71717A" />
-                <Text style={styles.backText}>back</Text>
-              </Pressable>
-
-              <Text style={styles.screenTitle}>Thoughts</Text>
-
-              <SummaryBanner total={totalCount} pinned={pinnedCount} />
-              <FilterTabs active={activeTab} onSelect={setActiveTab} />
-              <SearchBar value={search} onChangeText={setSearch} />
-            </View>
-          }
-        />
-      )}
+          )
+        }
+      />
     </SafeAreaView>
   );
 }
