@@ -17,6 +17,7 @@ import {
   Alert,
 } from 'react-native';
 import { OmniDatePicker } from '@/components/ui/OmniDatePicker';
+import { OmniActionSheet, ActionOption } from '@/components/ui/OmniActionSheet';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { OmniColors, OmniFonts, OmniGradient } from '@/constants/theme';
@@ -106,9 +107,13 @@ function FilterTabs({
 function SearchBar({
   value,
   onChangeText,
+  onFilterPress,
+  onSortPress,
 }: {
   value: string;
   onChangeText: (t: string) => void;
+  onFilterPress: () => void;
+  onSortPress: () => void;
 }) {
   return (
     <View style={styles.toolbarCard}>
@@ -123,10 +128,10 @@ function SearchBar({
             onChangeText={onChangeText}
           />
         </View>
-        <Pressable style={styles.toolBtn}>
+        <Pressable style={styles.toolBtn} onPress={onFilterPress}>
           <MaterialIcons name="filter-list" size={14} color={OmniColors.charcoal} />
         </Pressable>
-        <Pressable style={[styles.toolBtn, styles.toolBtnSubtle]}>
+        <Pressable style={[styles.toolBtn, styles.toolBtnSubtle]} onPress={onSortPress}>
           <MaterialIcons name="swap-vert" size={14} color="#52525B" />
         </Pressable>
       </View>
@@ -403,6 +408,10 @@ export default function TodosScreen() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [isAdding, setIsAdding] = useState(false);
 
+  const [priorityFilter, setPriorityFilter] = useState<'all' | Priority>('all');
+  const [sortConfig, setSortConfig] = useState<{ by: 'date' | 'priority', asc: boolean }>({ by: 'date', asc: false });
+  const [actionSheet, setActionSheet] = useState<{ visible: boolean, title: string, options: ActionOption[] }>({ visible: false, title: '', options: [] });
+
   const fetchTodos = useCallback(async (isRefresh = false) => {
     try {
       if (isRefresh) {
@@ -480,6 +489,31 @@ export default function TodosScreen() {
     }
   };
 
+  const handleFilterPress = () => {
+    setActionSheet({
+      visible: true,
+      title: 'Filter by Priority',
+      options: [
+        { label: 'All Priorities', onPress: () => setPriorityFilter('all') },
+        { label: 'High Priority', onPress: () => setPriorityFilter('high') },
+        { label: 'Medium Priority', onPress: () => setPriorityFilter('medium') },
+        { label: 'Low Priority', onPress: () => setPriorityFilter('low') },
+      ]
+    });
+  };
+
+  const handleSortPress = () => {
+    setActionSheet({
+      visible: true,
+      title: 'Sort Tasks',
+      options: [
+        { label: 'Date (Newest)', onPress: () => setSortConfig({ by: 'date', asc: false }) },
+        { label: 'Date (Oldest)', onPress: () => setSortConfig({ by: 'date', asc: true }) },
+        { label: 'Priority (High -> Low)', onPress: () => setSortConfig({ by: 'priority', asc: false }) },
+      ]
+    });
+  };
+
   const todayStr = new Date().toISOString().split('T')[0];
 
   // Dynamic banner stats
@@ -508,7 +542,7 @@ export default function TodosScreen() {
   });
 
   // Filter list by Search text
-  const displayed = search.trim()
+  let displayed = search.trim()
     ? filtered.filter(
         (todo) =>
           todo.title.toLowerCase().includes(search.toLowerCase()) ||
@@ -516,10 +550,27 @@ export default function TodosScreen() {
       )
     : filtered;
 
+  if (priorityFilter !== 'all') {
+    displayed = displayed.filter(todo => todo.priority === priorityFilter);
+  }
+
+  const sortedAndDisplayed = [...displayed].sort((a, b) => {
+    if (sortConfig.by === 'date') {
+      const da = new Date(a.due_date || a.date || a.created_at || 0).getTime();
+      const db = new Date(b.due_date || b.date || b.created_at || 0).getTime();
+      return sortConfig.asc ? da - db : db - da;
+    } else {
+      const pMap = { high: 3, medium: 2, low: 1 };
+      const pa = pMap[a.priority] || 0;
+      const pb = pMap[b.priority] || 0;
+      return sortConfig.asc ? pa - pb : pb - pa;
+    }
+  });
+
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <FlatList
-        data={displayed}
+        data={sortedAndDisplayed}
         keyExtractor={(item) => item.id}
         renderItem={({ item }) => (
           <TodoCard
@@ -544,7 +595,12 @@ export default function TodosScreen() {
 
             <SummaryBanner dueToday={dueTodayCount} completed={completedCount} />
             <FilterTabs active={activeTab} onSelect={setActiveTab} />
-            <SearchBar value={search} onChangeText={setSearch} />
+            <SearchBar 
+              value={search} 
+              onChangeText={setSearch} 
+              onFilterPress={handleFilterPress}
+              onSortPress={handleSortPress}
+            />
           </View>
         }
         ListEmptyComponent={
@@ -596,6 +652,12 @@ export default function TodosScreen() {
         visible={deletingId !== null}
         onClose={() => setDeletingId(null)}
         onConfirm={executeDelete}
+      />
+      <OmniActionSheet
+        visible={actionSheet.visible}
+        title={actionSheet.title}
+        options={actionSheet.options}
+        onClose={() => setActionSheet(prev => ({ ...prev, visible: false }))}
       />
     </SafeAreaView>
   );

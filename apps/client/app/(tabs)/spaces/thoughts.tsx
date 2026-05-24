@@ -16,6 +16,7 @@ import {
   Platform,
   Alert,
 } from 'react-native';
+import { OmniActionSheet, ActionOption } from '@/components/ui/OmniActionSheet';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { OmniColors, OmniFonts, OmniGradient } from '@/constants/theme';
@@ -97,9 +98,13 @@ function FilterTabs({
 function SearchBar({
   value,
   onChangeText,
+  onFilterPress,
+  onSortPress,
 }: {
   value: string;
   onChangeText: (t: string) => void;
+  onFilterPress: () => void;
+  onSortPress: () => void;
 }) {
   return (
     <View style={styles.toolbarCard}>
@@ -114,10 +119,10 @@ function SearchBar({
             onChangeText={onChangeText}
           />
         </View>
-        <Pressable style={styles.toolBtn}>
+        <Pressable style={styles.toolBtn} onPress={onFilterPress}>
           <MaterialIcons name="filter-list" size={14} color={OmniColors.charcoal} />
         </Pressable>
-        <Pressable style={[styles.toolBtn, styles.toolBtnSubtle]}>
+        <Pressable style={[styles.toolBtn, styles.toolBtnSubtle]} onPress={onSortPress}>
           <MaterialIcons name="swap-vert" size={14} color="#52525B" />
         </Pressable>
       </View>
@@ -342,6 +347,9 @@ export default function ThoughtsScreen() {
   const [editingItem, setEditingItem] = useState<NoteItem | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [isAdding, setIsAdding] = useState(false);
+  const [tagFilter, setTagFilter] = useState<string>('all');
+  const [sortAsc, setSortAsc] = useState<boolean>(false);
+  const [actionSheet, setActionSheet] = useState<{ visible: boolean, title: string, options: ActionOption[] }>({ visible: false, title: '', options: [] });
 
   const fetchThoughts = useCallback(async (isRefresh = false) => {
     try {
@@ -393,6 +401,31 @@ export default function ThoughtsScreen() {
     }
   };
 
+  const handleFilterPress = () => {
+    setActionSheet({
+      visible: true,
+      title: 'Filter by Tag',
+      options: [
+        { label: 'All Tags', onPress: () => setTagFilter('all') },
+        { label: 'Pinned', onPress: () => setTagFilter('pinned') },
+        { label: 'Personal', onPress: () => setTagFilter('personal') },
+        { label: 'Product', onPress: () => setTagFilter('product') },
+        { label: 'Ops', onPress: () => setTagFilter('ops') },
+      ]
+    });
+  };
+
+  const handleSortPress = () => {
+    setActionSheet({
+      visible: true,
+      title: 'Sort Thoughts',
+      options: [
+        { label: 'Date (Newest)', onPress: () => setSortAsc(false) },
+        { label: 'Date (Oldest)', onPress: () => setSortAsc(true) },
+      ]
+    });
+  };
+
   // Filter list by Tab category
   const filtered = thoughts.filter((note) => {
     if (activeTab === 'all') return true;
@@ -400,13 +433,19 @@ export default function ThoughtsScreen() {
   });
 
   // Filter list by Search text
-  const displayed = search.trim()
+  let displayed = search.trim()
     ? filtered.filter(
         (note) =>
           (note.title && note.title.toLowerCase().includes(search.toLowerCase())) ||
           note.content.toLowerCase().includes(search.toLowerCase())
       )
     : filtered;
+
+  if (tagFilter !== 'all') {
+    displayed = displayed.filter(note => 
+      note.tags.some(t => t.toLowerCase() === tagFilter.toLowerCase())
+    );
+  }
 
   // Sort pinned to top, then by creation date
   const sortedAndDisplayed = [...displayed].sort((a, b) => {
@@ -416,7 +455,9 @@ export default function ThoughtsScreen() {
     if (aPinned && !bPinned) return -1;
     if (!aPinned && bPinned) return 1;
 
-    return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+    const da = new Date(a.created_at).getTime();
+    const db = new Date(b.created_at).getTime();
+    return sortAsc ? da - db : db - da;
   });
 
   const totalCount = thoughts.length;
@@ -469,7 +510,12 @@ export default function ThoughtsScreen() {
 
             <SummaryBanner total={totalCount} pinned={pinnedCount} />
             <FilterTabs active={activeTab} onSelect={setActiveTab} />
-            <SearchBar value={search} onChangeText={setSearch} />
+            <SearchBar 
+              value={search} 
+              onChangeText={setSearch} 
+              onFilterPress={handleFilterPress}
+              onSortPress={handleSortPress}
+            />
           </View>
         }
         ListEmptyComponent={
@@ -521,6 +567,12 @@ export default function ThoughtsScreen() {
         visible={deletingId !== null}
         onClose={() => setDeletingId(null)}
         onConfirm={executeDelete}
+      />
+      <OmniActionSheet
+        visible={actionSheet.visible}
+        title={actionSheet.title}
+        options={actionSheet.options}
+        onClose={() => setActionSheet(prev => ({ ...prev, visible: false }))}
       />
     </SafeAreaView>
   );

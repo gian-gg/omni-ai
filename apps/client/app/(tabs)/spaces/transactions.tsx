@@ -17,6 +17,7 @@ import {
   View,
 } from 'react-native';
 import { OmniDatePicker } from '@/components/ui/OmniDatePicker';
+import { OmniActionSheet, ActionOption } from '@/components/ui/OmniActionSheet';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { OmniColors, OmniFonts, OmniGradient } from '@/constants/theme';
@@ -120,9 +121,13 @@ function FilterTabs({
 function SearchBar({
   value,
   onChangeText,
+  onFilterPress,
+  onSortPress,
 }: {
   value: string;
   onChangeText: (t: string) => void;
+  onFilterPress: () => void;
+  onSortPress: () => void;
 }) {
   return (
     <View style={styles.toolbarCard}>
@@ -137,14 +142,11 @@ function SearchBar({
             onChangeText={onChangeText}
           />
         </View>
-        <Pressable style={styles.toolBtn}>
+        <Pressable style={styles.toolBtn} onPress={onFilterPress}>
           <MaterialIcons name="filter-list" size={14} color={OmniColors.charcoal} />
         </Pressable>
-        <Pressable style={[styles.toolBtn, styles.toolBtnSubtle]}>
+        <Pressable style={[styles.toolBtn, styles.toolBtnSubtle]} onPress={onSortPress}>
           <MaterialIcons name="swap-vert" size={14} color="#52525B" />
-        </Pressable>
-        <Pressable style={styles.toolBtn}>
-          <MaterialIcons name="date-range" size={14} color="#52525B" />
         </Pressable>
       </View>
     </View>
@@ -431,8 +433,10 @@ export default function TransactionsScreen() {
   const [error, setError] = useState<string | null>(null);
   const [editingItem, setEditingItem] = useState<TransactionItem | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
-
   const [isAdding, setIsAdding] = useState(false);
+  const [typeFilter, setTypeFilter] = useState<'all' | 'income' | 'expense'>('all');
+  const [sortConfig, setSortConfig] = useState<{ by: 'date' | 'amount', asc: boolean }>({ by: 'date', asc: false });
+  const [actionSheet, setActionSheet] = useState<{ visible: boolean, title: string, options: ActionOption[] }>({ visible: false, title: '', options: [] });
 
   const fetchTransactions = useCallback(async (isRefresh = false) => {
     try {
@@ -480,10 +484,35 @@ export default function TransactionsScreen() {
       await deleteTransaction(deletingId);
       setTransactions((prev) => prev.filter((tx) => tx.id !== deletingId));
       setDeletingId(null);
-      setEditingItem(null); // Close edit modal as well
+      setEditingItem(null); // Close modal if open
     } catch (err) {
       Alert.alert('Error', err instanceof Error ? err.message : 'Failed to delete transaction');
     }
+  };
+
+  const handleFilterPress = () => {
+    setActionSheet({
+      visible: true,
+      title: 'Filter by Type',
+      options: [
+        { label: 'All Types', onPress: () => setTypeFilter('all') },
+        { label: 'Income Only', onPress: () => setTypeFilter('income') },
+        { label: 'Expense Only', onPress: () => setTypeFilter('expense') },
+      ]
+    });
+  };
+
+  const handleSortPress = () => {
+    setActionSheet({
+      visible: true,
+      title: 'Sort Transactions',
+      options: [
+        { label: 'Date (Newest)', onPress: () => setSortConfig({ by: 'date', asc: false }) },
+        { label: 'Date (Oldest)', onPress: () => setSortConfig({ by: 'date', asc: true }) },
+        { label: 'Amount (Highest)', onPress: () => setSortConfig({ by: 'amount', asc: false }) },
+        { label: 'Amount (Lowest)', onPress: () => setSortConfig({ by: 'amount', asc: true }) },
+      ]
+    });
   };
 
   // Filter by tab
@@ -494,13 +523,27 @@ export default function TransactionsScreen() {
   });
 
   // Filter by search
-  const displayed = search.trim()
+  let displayed = search.trim()
     ? filtered.filter(
         (tx) =>
-          (tx.description ?? '').toLowerCase().includes(search.toLowerCase()) ||
-          (tx.category ?? '').toLowerCase().includes(search.toLowerCase()),
+          tx.description?.toLowerCase().includes(search.toLowerCase()) ||
+          tx.category?.toLowerCase().includes(search.toLowerCase())
       )
     : filtered;
+
+  if (typeFilter !== 'all') {
+    displayed = displayed.filter(tx => tx.type === typeFilter);
+  }
+
+  const sortedAndDisplayed = [...displayed].sort((a, b) => {
+    if (sortConfig.by === 'date') {
+      const da = new Date(a.date || a.created_at || 0).getTime();
+      const db = new Date(b.date || b.created_at || 0).getTime();
+      return sortConfig.asc ? da - db : db - da;
+    } else {
+      return sortConfig.asc ? a.amount - b.amount : b.amount - a.amount;
+    }
+  });
 
   // Calculate summaries from real data
   const totalIncome = transactions
@@ -513,7 +556,7 @@ export default function TransactionsScreen() {
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <FlatList
-        data={displayed}
+        data={sortedAndDisplayed}
         keyExtractor={(item) => item.id}
         renderItem={({ item }) => (
           <TransactionCard
@@ -544,7 +587,12 @@ export default function TransactionsScreen() {
 
             {/* Tabs + Search */}
             <FilterTabs active={activeTab} onSelect={setActiveTab} />
-            <SearchBar value={search} onChangeText={setSearch} />
+            <SearchBar 
+              value={search} 
+              onChangeText={setSearch} 
+              onFilterPress={handleFilterPress}
+              onSortPress={handleSortPress}
+            />
           </View>
         }
         ListEmptyComponent={
@@ -594,6 +642,12 @@ export default function TransactionsScreen() {
         visible={deletingId !== null}
         onClose={() => setDeletingId(null)}
         onConfirm={executeDelete}
+      />
+      <OmniActionSheet
+        visible={actionSheet.visible}
+        title={actionSheet.title}
+        options={actionSheet.options}
+        onClose={() => setActionSheet(prev => ({ ...prev, visible: false }))}
       />
     </SafeAreaView>
   );
