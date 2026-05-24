@@ -434,7 +434,7 @@ export default function TransactionsScreen() {
   const [editingItem, setEditingItem] = useState<TransactionItem | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [isAdding, setIsAdding] = useState(false);
-  const [typeFilter, setTypeFilter] = useState<'all' | 'income' | 'expense'>('all');
+  const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [sortConfig, setSortConfig] = useState<{ by: 'date' | 'amount', asc: boolean }>({ by: 'date', asc: false });
   const [actionSheet, setActionSheet] = useState<{ visible: boolean, title: string, options: ActionOption[] }>({ visible: false, title: '', options: [] });
 
@@ -491,14 +491,27 @@ export default function TransactionsScreen() {
   };
 
   const handleFilterPress = () => {
+    // Dynamically get unique categories from filtered transactions (respecting activeTab)
+    const allCategories = new Set<string>();
+    filtered.forEach(tx => {
+      if (tx.category) allCategories.add(tx.category.toLowerCase());
+    });
+    const uniqueCategories = Array.from(allCategories).sort();
+
+    const options: ActionOption[] = [
+      { label: 'All Categories', onPress: () => setCategoryFilter('all') }
+    ];
+
+    // Capitalize first letter for display
+    uniqueCategories.forEach(cat => {
+      const displayLabel = cat.charAt(0).toUpperCase() + cat.slice(1);
+      options.push({ label: displayLabel, onPress: () => setCategoryFilter(cat) });
+    });
+
     setActionSheet({
       visible: true,
-      title: 'Filter by Type',
-      options: [
-        { label: 'All Types', onPress: () => setTypeFilter('all') },
-        { label: 'Income Only', onPress: () => setTypeFilter('income') },
-        { label: 'Expense Only', onPress: () => setTypeFilter('expense') },
-      ]
+      title: 'Filter by Category',
+      options
     });
   };
 
@@ -531,8 +544,8 @@ export default function TransactionsScreen() {
       )
     : filtered;
 
-  if (typeFilter !== 'all') {
-    displayed = displayed.filter(tx => tx.type === typeFilter);
+  if (categoryFilter !== 'all') {
+    displayed = displayed.filter(tx => tx.category?.toLowerCase() === categoryFilter.toLowerCase());
   }
 
   const sortedAndDisplayed = [...displayed].sort((a, b) => {
@@ -840,6 +853,8 @@ const styles = StyleSheet.create({
     fontFamily: OmniFonts.bodySemiBold,
     fontSize: 11,
     color: '#52525B',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   txRight: { alignItems: 'flex-end', gap: 4 },
   txAmount: {
