@@ -61,39 +61,6 @@ function SummaryBanner({ total, pinned }: { total: number; pinned: number }) {
   );
 }
 
-function FilterTabs({
-  active,
-  onSelect,
-}: {
-  active: TabKey;
-  onSelect: (key: TabKey) => void;
-}) {
-  const tabs: { key: TabKey; label: string }[] = [
-    { key: 'all',      label: 'All' },
-    { key: 'product',  label: 'Product' },
-    { key: 'ops',      label: 'Ops' },
-    { key: 'personal', label: 'Personal' },
-  ];
-
-  return (
-    <View style={styles.tabRow}>
-      {tabs.map((tab) => {
-        const isActive = tab.key === active;
-        return (
-          <Pressable
-            key={tab.key}
-            style={[styles.tab, isActive ? styles.tabActive : styles.tabInactive]}
-            onPress={() => onSelect(tab.key)}
-          >
-            <Text style={isActive ? styles.tabTextActive : styles.tabTextInactive}>
-              {tab.label}
-            </Text>
-          </Pressable>
-        );
-      })}
-    </View>
-  );
-}
 
 function SearchBar({
   value,
@@ -140,7 +107,7 @@ function ThoughtCard({
   onTogglePin: () => void;
 }) {
   const getCategory = (tags: string[]) => {
-    if (!tags || tags.length === 0) return 'Note';
+    if (!tags || tags.length === 0) return 'NOTE';
     const known = ['product', 'ops', 'personal'];
     const found = tags.find((t) => known.includes(t.toLowerCase()));
     return found ? found.toUpperCase() : tags[0].toUpperCase();
@@ -213,6 +180,7 @@ function EditNoteModal({
   const [editFields, setEditFields] = useState({
     title: '',
     content: '',
+    tags: '',
   });
 
   useEffect(() => {
@@ -220,11 +188,13 @@ function EditNoteModal({
       setEditFields({
         title: item.title || '',
         content: item.content || '',
+        tags: item.tags ? item.tags.join(', ') : '',
       });
     } else if (isAdding) {
       setEditFields({
         title: '',
         content: '',
+        tags: '',
       });
     }
   }, [item, isAdding]);
@@ -270,6 +240,15 @@ function EditNoteModal({
               onChangeText={(val) => setEditFields({ ...editFields, content: val })}
             />
 
+            <Text style={styles.editLabel}>Tags</Text>
+            <TextInput
+              style={styles.editInput}
+              value={editFields.tags}
+              placeholder="Comma-separated tags (e.g. personal, school, etc)"
+              placeholderTextColor="#A1A1AA"
+              onChangeText={(val) => setEditFields({ ...editFields, tags: val })}
+            />
+
             {/* Actions */}
             <View style={styles.editActions}>
               <Pressable style={styles.editCancelBtn} onPress={onClose}>
@@ -282,9 +261,15 @@ function EditNoteModal({
                 ]}
                 disabled={!editFields.content.trim()}
                 onPress={() => {
+                  const tagArray = editFields.tags
+                    .split(',')
+                    .map(t => t.trim().toLowerCase())
+                    .filter(t => t.length > 0);
+
                   onSave(item ? item.id : null, {
                     title: editFields.title || null,
                     content: editFields.content,
+                    tags: tagArray,
                   });
                 }}
               >
@@ -338,7 +323,6 @@ function ConfirmDeleteModal({
 
 export default function ThoughtsScreen() {
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState<TabKey>('all');
   const [search, setSearch] = useState('');
   const [thoughts, setThoughts] = useState<NoteItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -402,16 +386,25 @@ export default function ThoughtsScreen() {
   };
 
   const handleFilterPress = () => {
+    // Dynamically get unique tags from thoughts
+    const allTags = new Set<string>();
+    thoughts.forEach(t => t.tags.forEach(tag => allTags.add(tag.toLowerCase())));
+    const uniqueTags = Array.from(allTags).sort();
+
+    const options: ActionOption[] = [
+      { label: 'All Tags', onPress: () => setTagFilter('all') }
+    ];
+
+    // Capitalize first letter for display
+    uniqueTags.forEach(tag => {
+      const displayLabel = tag.charAt(0).toUpperCase() + tag.slice(1);
+      options.push({ label: displayLabel, onPress: () => setTagFilter(tag) });
+    });
+
     setActionSheet({
       visible: true,
       title: 'Filter by Tag',
-      options: [
-        { label: 'All Tags', onPress: () => setTagFilter('all') },
-        { label: 'Pinned', onPress: () => setTagFilter('pinned') },
-        { label: 'Personal', onPress: () => setTagFilter('personal') },
-        { label: 'Product', onPress: () => setTagFilter('product') },
-        { label: 'Ops', onPress: () => setTagFilter('ops') },
-      ]
+      options
     });
   };
 
@@ -426,20 +419,14 @@ export default function ThoughtsScreen() {
     });
   };
 
-  // Filter list by Tab category
-  const filtered = thoughts.filter((note) => {
-    if (activeTab === 'all') return true;
-    return note.tags.some((tag) => tag.toLowerCase() === activeTab.toLowerCase());
-  });
-
   // Filter list by Search text
   let displayed = search.trim()
-    ? filtered.filter(
+    ? thoughts.filter(
         (note) =>
           (note.title && note.title.toLowerCase().includes(search.toLowerCase())) ||
           note.content.toLowerCase().includes(search.toLowerCase())
       )
-    : filtered;
+    : thoughts;
 
   if (tagFilter !== 'all') {
     displayed = displayed.filter(note => 
@@ -509,7 +496,6 @@ export default function ThoughtsScreen() {
             <Text style={styles.screenTitle}>Thoughts</Text>
 
             <SummaryBanner total={totalCount} pinned={pinnedCount} />
-            <FilterTabs active={activeTab} onSelect={setActiveTab} />
             <SearchBar 
               value={search} 
               onChangeText={setSearch} 

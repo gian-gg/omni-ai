@@ -1,5 +1,5 @@
 import React from 'react';
-import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Modal, Pressable, StyleSheet, Text, View, ScrollView } from 'react-native';
 import { OmniColors, OmniFonts } from '@/constants/theme';
 
 export interface ActionOption {
@@ -24,26 +24,28 @@ export function OmniActionSheet({ visible, title, options, onClose }: OmniAction
         <Pressable style={styles.container} onPress={() => {}}>
           <Text style={styles.title}>{title}</Text>
           <View style={styles.optionsList}>
-            {options.map((opt, i) => (
-              <Pressable
-                key={i}
-                style={[
-                  styles.optionBtn,
-                  i === options.length - 1 ? styles.optionBtnLast : null,
-                ]}
-                onPress={() => {
-                  opt.onPress();
-                  onClose();
-                }}
-              >
-                <Text style={[
-                  styles.optionText,
-                  opt.destructive && styles.optionTextDestructive,
-                ]}>
-                  {opt.label}
-                </Text>
-              </Pressable>
-            ))}
+            <ScrollView style={{ maxHeight: 300 }} showsVerticalScrollIndicator={false}>
+              {options.map((opt, i) => (
+                <Pressable
+                  key={i}
+                  style={[
+                    styles.optionBtn,
+                    i === options.length - 1 ? styles.optionBtnLast : null,
+                  ]}
+                  onPress={() => {
+                    opt.onPress();
+                    onClose();
+                  }}
+                >
+                  <Text style={[
+                    styles.optionText,
+                    opt.destructive && styles.optionTextDestructive,
+                  ]}>
+                    {opt.label}
+                  </Text>
+                </Pressable>
+              ))}
+            </ScrollView>
           </View>
           <Pressable style={styles.cancelBtn} onPress={onClose}>
             <Text style={styles.cancelText}>Cancel</Text>
