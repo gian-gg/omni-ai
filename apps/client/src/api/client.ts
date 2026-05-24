@@ -92,13 +92,23 @@ async function apiFetch<T>(
     throw new Error(`API ${res.status}: ${body}`);
   }
 
+  if (res.status === 204 || res.headers.get('content-length') === '0') {
+    return undefined as T;
+  }
+
   return res.json() as Promise<T>;
 }
 
 // ── Chat ────────────────────────────────────────────────────────────
 
 export type ChatResponse = {
+  intent: 'finance' | 'todo' | 'note' | 'chat';
   response: string;
+  complete_response: string | null;
+  cancelled_response: string | null;
+  data: any | null;
+  tokens: number;
+  datetime: string;
 };
 
 /**
@@ -109,5 +119,187 @@ export async function sendMessage(prompt: string): Promise<ChatResponse> {
   return apiFetch<ChatResponse>('/chat', {
     method: 'POST',
     body: JSON.stringify({ prompt }),
+  });
+}
+
+export async function createTransaction(payload: TransactionUpdatePayload): Promise<TransactionItem> {
+  return apiFetch<TransactionItem>('/transactions', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function createTodo(payload: TodoUpdatePayload): Promise<TodoItem> {
+  return apiFetch<TodoItem>('/todos', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function createNote(payload: NoteUpdatePayload): Promise<NoteItem> {
+  return apiFetch<NoteItem>('/notes', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+// ── Transactions ────────────────────────────────────────────────────
+
+export type TransactionItem = {
+  id: string;
+  type: 'income' | 'expense';
+  amount: number;
+  currency: string;
+  category: string | null;
+  description: string | null;
+  date: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type TransactionListResponse = {
+  items: TransactionItem[];
+  total: number;
+  limit: number;
+  offset: number;
+};
+
+export async function listTransactions(
+  limit = 50,
+  offset = 0,
+): Promise<TransactionListResponse> {
+  return apiFetch<TransactionListResponse>(
+    `/transactions?limit=${limit}&offset=${offset}`,
+  );
+}
+
+export type TransactionUpdatePayload = {
+  type?: 'income' | 'expense';
+  amount?: number;
+  currency?: string;
+  category?: string | null;
+  description?: string | null;
+  date?: string;
+};
+
+export async function updateTransaction(
+  id: string,
+  payload: TransactionUpdatePayload,
+): Promise<TransactionItem> {
+  return apiFetch<TransactionItem>(`/transactions/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function deleteTransaction(id: string): Promise<void> {
+  await apiFetch<void>(`/transactions/${id}`, {
+    method: 'DELETE',
+  });
+}
+
+// ── To-Dos ──────────────────────────────────────────────────────────
+
+export type TodoItem = {
+  id: string;
+  title: string;
+  description: string | null;
+  due_date: string | null;
+  priority: 'low' | 'medium' | 'high';
+  date: string;
+  is_done: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type TodoListResponse = {
+  items: TodoItem[];
+  total: number;
+  limit: number;
+  offset: number;
+};
+
+export async function listTodos(
+  limit = 50,
+  offset = 0,
+): Promise<TodoListResponse> {
+  return apiFetch<TodoListResponse>(`/todos?limit=${limit}&offset=${offset}`);
+}
+
+export async function completeTodoApi(id: string): Promise<TodoItem> {
+  return apiFetch<TodoItem>(`/todos/${id}/complete`, {
+    method: 'POST',
+  });
+}
+
+export type TodoUpdatePayload = {
+  title?: string;
+  description?: string | null;
+  due_date?: string | null;
+  priority?: 'low' | 'medium' | 'high';
+  is_done?: boolean;
+};
+
+export async function updateTodo(
+  id: string,
+  payload: TodoUpdatePayload,
+): Promise<TodoItem> {
+  return apiFetch<TodoItem>(`/todos/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function deleteTodo(id: string): Promise<void> {
+  await apiFetch<void>(`/todos/${id}`, {
+    method: 'DELETE',
+  });
+}
+
+// ── Notes ───────────────────────────────────────────────────────────
+
+export type NoteItem = {
+  id: string;
+  title: string | null;
+  content: string;
+  tags: string[];
+  date: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type NoteListResponse = {
+  items: NoteItem[];
+  total: number;
+  limit: number;
+  offset: number;
+};
+
+export async function listNotes(
+  limit = 50,
+  offset = 0,
+): Promise<NoteListResponse> {
+  return apiFetch<NoteListResponse>(`/notes?limit=${limit}&offset=${offset}`);
+}
+
+export type NoteUpdatePayload = {
+  title?: string | null;
+  content?: string;
+  tags?: string[];
+};
+
+export async function updateNote(
+  id: string,
+  payload: NoteUpdatePayload,
+): Promise<NoteItem> {
+  return apiFetch<NoteItem>(`/notes/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function deleteNote(id: string): Promise<void> {
+  await apiFetch<void>(`/notes/${id}`, {
+    method: 'DELETE',
   });
 }

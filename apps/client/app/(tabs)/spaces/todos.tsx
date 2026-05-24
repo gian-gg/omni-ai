@@ -1,7 +1,7 @@
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   FlatList,
   Pressable,
@@ -9,54 +9,32 @@ import {
   Text,
   TextInput,
   View,
+  ActivityIndicator,
+  RefreshControl,
+  Modal,
+  KeyboardAvoidingView,
+  Platform,
+  Alert,
 } from 'react-native';
+import { OmniDatePicker } from '@/components/ui/OmniDatePicker';
+import { OmniActionSheet, ActionOption } from '@/components/ui/OmniActionSheet';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { OmniColors, OmniFonts, OmniGradient } from '@/constants/theme';
+import {
+  listTodos,
+  completeTodoApi,
+  createTodo,
+  updateTodo,
+  deleteTodo,
+  TodoItem,
+  TodoUpdatePayload,
+} from '@/api/client';
 
 // ── Types ───────────────────────────────────────────────────────────
 
 type Priority = 'high' | 'medium' | 'low';
-
-type Todo = {
-  id: string;
-  title: string;
-  priority: Priority;
-  due: string;
-  source: string;
-  done: boolean;
-};
-
 type TabKey = 'all' | 'today' | 'upcoming' | 'done';
-
-// ── Static data (swap with API later) ───────────────────────────────
-
-const TODOS: Todo[] = [
-  {
-    id: '1',
-    title: 'Submit reimbursement for lunch meeting',
-    priority: 'high',
-    due: 'Today 9:00 AM',
-    source: 'From transaction',
-    done: false,
-  },
-  {
-    id: '2',
-    title: 'Finalize hiring plan draft',
-    priority: 'medium',
-    due: 'Today 4:30 PM',
-    source: 'Voice thought',
-    done: false,
-  },
-  {
-    id: '3',
-    title: 'Send Q2 launch comms update to design and product',
-    priority: 'low',
-    due: 'Friday, 10:00 AM',
-    source: 'Strategy note',
-    done: false,
-  },
-];
 
 const PRIORITY_CONFIG: Record<Priority, { label: string; bg: string; color: string }> = {
   high:   { label: 'High',   bg: '#FFF1F2', color: '#BE123C' },
@@ -73,7 +51,7 @@ const TABS: { key: TabKey; label: string }[] = [
 
 // ── Sub-components ──────────────────────────────────────────────────
 
-function SummaryBanner() {
+function SummaryBanner({ dueToday, completed }: { dueToday: number; completed: number }) {
   return (
     <LinearGradient
       colors={OmniGradient}
@@ -84,11 +62,11 @@ function SummaryBanner() {
       <View style={styles.bannerRow}>
         <View style={styles.bannerStat}>
           <Text style={styles.bannerStatLabel}>Due today</Text>
-          <Text style={styles.bannerStatValue}>3</Text>
+          <Text style={styles.bannerStatValue}>{dueToday}</Text>
         </View>
         <View style={styles.bannerStat}>
           <Text style={styles.bannerStatLabel}>Completed</Text>
-          <Text style={styles.bannerStatValue}>1</Text>
+          <Text style={styles.bannerStatValue}>{completed}</Text>
         </View>
         <View style={styles.bannerStat}>
           <Text style={styles.bannerStatLabel}>Streak</Text>
@@ -129,9 +107,13 @@ function FilterTabs({
 function SearchBar({
   value,
   onChangeText,
+  onFilterPress,
+  onSortPress,
 }: {
   value: string;
   onChangeText: (t: string) => void;
+  onFilterPress: () => void;
+  onSortPress: () => void;
 }) {
   return (
     <View style={styles.toolbarCard}>
@@ -146,10 +128,10 @@ function SearchBar({
             onChangeText={onChangeText}
           />
         </View>
-        <Pressable style={styles.toolBtn}>
+        <Pressable style={styles.toolBtn} onPress={onFilterPress}>
           <MaterialIcons name="filter-list" size={14} color={OmniColors.charcoal} />
         </Pressable>
-        <Pressable style={[styles.toolBtn, styles.toolBtnSubtle]}>
+        <Pressable style={[styles.toolBtn, styles.toolBtnSubtle]} onPress={onSortPress}>
           <MaterialIcons name="swap-vert" size={14} color="#52525B" />
         </Pressable>
       </View>
@@ -169,38 +151,246 @@ function PriorityBadge({ priority }: { priority: Priority }) {
 function TodoCard({
   item,
   onToggle,
+  onEdit,
 }: {
-  item: Todo;
+  item: TodoItem;
   onToggle: () => void;
+  onEdit: () => void;
 }) {
+  const formatDateLabel = (dateStr: string | null) => {
+    if (!dateStr) return 'No date';
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return dateStr;
+    return d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+  };
+
   return (
-    <View style={styles.todoCard}>
+    <Pressable
+      onPress={onEdit}
+      style={({ pressed }) => [
+        styles.todoCard,
+        pressed && { opacity: 0.6 }
+      ]}
+    >
       <View style={styles.todoTop}>
         <View style={styles.todoLeft}>
           <View style={styles.todoTitleRow}>
-            <Text style={[styles.todoTitle, item.done && styles.todoTitleDone]}>
+            <Text style={[styles.todoTitle, item.is_done && styles.todoTitleDone]}>
               {item.title}
             </Text>
             <PriorityBadge priority={item.priority} />
           </View>
           <View style={styles.tagRow}>
-            <View style={styles.tag}>
-              <Text style={styles.tagTextBold}>{item.due}</Text>
-            </View>
-            <View style={styles.tag}>
-              <Text style={styles.tagText}>{item.source}</Text>
-            </View>
+            {(item.due_date || item.date) && (
+              <View style={styles.tag}>
+                <Text style={styles.tagTextBold}>
+                  {formatDateLabel(item.due_date || item.date)}
+                </Text>
+              </View>
+            )}
+            {item.description ? (
+              <View style={[styles.tag, { paddingHorizontal: 6 }]}>
+                <MaterialIcons name="notes" size={14} color="#52525B" />
+              </View>
+            ) : null}
           </View>
         </View>
         <Pressable style={styles.checkBtn} onPress={onToggle}>
           <MaterialIcons
-            name={item.done ? 'check-box' : 'check-box-outline-blank'}
+            name={item.is_done ? 'check-box' : 'check-box-outline-blank'}
             size={20}
-            color={item.done ? OmniColors.ink : '#A1A1AA'}
+            color={item.is_done ? OmniColors.ink : '#A1A1AA'}
           />
         </Pressable>
       </View>
-    </View>
+    </Pressable>
+  );
+}
+
+// ── Edit Modal ──────────────────────────────────────────────────────
+
+function EditTodoModal({
+  item,
+  visible,
+  onClose,
+  onSave,
+  onDelete,
+  isAdding,
+}: {
+  item: TodoItem | null;
+  visible: boolean;
+  onClose: () => void;
+  onSave: (id: string | null, payload: TodoUpdatePayload) => void;
+  onDelete: (id: string) => void;
+  isAdding?: boolean;
+}) {
+  const [editFields, setEditFields] = useState({
+    title: '',
+    description: '',
+    due_date: undefined as Date | undefined,
+    priority: 'medium' as Priority,
+  });
+  const [showDatePicker, setShowDatePicker] = useState(false);
+
+  useEffect(() => {
+    if (item) {
+      setEditFields({
+        title: item.title,
+        description: item.description || '',
+        due_date: item.due_date ? new Date(item.due_date) : undefined,
+        priority: item.priority,
+      });
+    } else if (isAdding) {
+      setEditFields({
+        title: '',
+        description: '',
+        due_date: new Date(),
+        priority: 'medium',
+      });
+    }
+  }, [item, isAdding]);
+
+  if (!item && !isAdding) return null;
+
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <Pressable style={styles.modalOverlay} onPress={onClose}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={{ width: '100%' }}
+        >
+          <Pressable style={styles.modalSheet} onPress={() => {}}>
+            {/* Drag handle */}
+            <View style={styles.modalHandle} />
+
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <Text style={[styles.modalTitle, { marginBottom: 0 }]}>{isAdding ? 'Add To-Do' : 'Edit To-Do'}</Text>
+              {!isAdding && item && (
+                <Pressable onPress={() => onDelete(item.id)}>
+                  <MaterialIcons name="delete-outline" size={24} color="#EF4444" />
+                </Pressable>
+              )}
+            </View>
+
+            <Text style={styles.editLabel}>Title</Text>
+            <TextInput
+              style={styles.editInput}
+              value={editFields.title}
+              placeholder="Task title"
+              placeholderTextColor="#A1A1AA"
+              onChangeText={(val) => setEditFields({ ...editFields, title: val })}
+            />
+
+            <Text style={styles.editLabel}>Priority</Text>
+            <View style={styles.typeToggleRow}>
+              {(['low', 'medium', 'high'] as Priority[]).map((p) => (
+                <Pressable
+                  key={p}
+                  style={[styles.typeToggleBtn, editFields.priority === p && styles.typeToggleBtnActive]}
+                  onPress={() => setEditFields({ ...editFields, priority: p })}
+                >
+                  <Text
+                    style={[
+                      styles.typeToggleText,
+                      editFields.priority === p && styles.typeToggleTextActive,
+                      { textTransform: 'capitalize' }
+                    ]}
+                  >
+                    {p}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+
+            <Text style={styles.editLabel}>Description</Text>
+            <TextInput
+              style={[styles.editInput, styles.editInputMultiline]}
+              value={editFields.description}
+              placeholder="Additional details..."
+              placeholderTextColor="#A1A1AA"
+              multiline
+              onChangeText={(val) => setEditFields({ ...editFields, description: val })}
+            />
+
+            <Text style={styles.editLabel}>Due Date</Text>
+            <Pressable
+              style={styles.editInput}
+              onPress={() => setShowDatePicker(true)}
+            >
+              <Text style={{ color: editFields.due_date ? OmniColors.ink : '#A1A1AA' }}>
+                {editFields.due_date ? editFields.due_date.toISOString().split('T')[0] : 'No due date'}
+              </Text>
+            </Pressable>
+
+            {/* Date Picker Modal */}
+            <OmniDatePicker
+              visible={showDatePicker}
+              value={editFields.due_date || new Date()}
+              onClose={() => setShowDatePicker(false)}
+              onChange={(selectedDate) => {
+                setEditFields({ ...editFields, due_date: selectedDate });
+              }}
+            />
+
+            {/* Actions */}
+            <View style={styles.editActions}>
+              <Pressable style={styles.editCancelBtn} onPress={onClose}>
+                <Text style={styles.editCancelText}>Cancel</Text>
+              </Pressable>
+              <Pressable
+                style={styles.editSaveBtn}
+                onPress={() =>
+                  onSave(item ? item.id : null, {
+                    title: editFields.title,
+                    description: editFields.description || null,
+                    due_date: editFields.due_date ? editFields.due_date.toISOString().split('T')[0] : null,
+                    priority: editFields.priority,
+                  })
+                }
+              >
+                <Text style={styles.editSaveText}>Save</Text>
+              </Pressable>
+            </View>
+          </Pressable>
+        </KeyboardAvoidingView>
+      </Pressable>
+    </Modal>
+  );
+}
+
+// ── Confirm Delete Modal ────────────────────────────────────────────
+
+function ConfirmDeleteModal({
+  visible,
+  onClose,
+  onConfirm,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <Pressable style={styles.modalOverlayCenter} onPress={onClose}>
+        <Pressable style={styles.confirmModalBox} onPress={() => {}}>
+          <View style={styles.confirmIconBox}>
+            <MaterialIcons name="delete-outline" size={24} color="#EF4444" />
+          </View>
+          <Text style={styles.confirmTitle}>Delete Task?</Text>
+          <Text style={styles.confirmText}>
+            Are you sure you want to delete this to-do? This action cannot be undone.
+          </Text>
+          <View style={styles.confirmActions}>
+            <Pressable style={styles.confirmCancelBtn} onPress={onClose}>
+              <Text style={styles.confirmCancelText}>Cancel</Text>
+            </Pressable>
+            <Pressable style={styles.confirmDeleteBtn} onPress={onConfirm}>
+              <Text style={styles.confirmDeleteText}>Delete</Text>
+            </Pressable>
+          </View>
+        </Pressable>
+      </Pressable>
+    </Modal>
   );
 }
 
@@ -210,24 +400,190 @@ export default function TodosScreen() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<TabKey>('all');
   const [search, setSearch] = useState('');
-  const [todos, setTodos] = useState(TODOS);
+  const [todos, setTodos] = useState<TodoItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [editingItem, setEditingItem] = useState<TodoItem | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [isAdding, setIsAdding] = useState(false);
 
-  const toggleTodo = (id: string) => {
+  const [priorityFilter, setPriorityFilter] = useState<'all' | Priority>('all');
+  const [sortConfig, setSortConfig] = useState<{ by: 'date' | 'priority', asc: boolean }>({ by: 'date', asc: false });
+  const [actionSheet, setActionSheet] = useState<{ visible: boolean, title: string, options: ActionOption[] }>({ visible: false, title: '', options: [] });
+
+  const fetchTodos = useCallback(async (isRefresh = false) => {
+    try {
+      if (isRefresh) {
+        setRefreshing(true);
+      } else {
+        setLoading(true);
+      }
+      setError(null);
+      const res = await listTodos();
+      setTodos(res.items);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to fetch tasks');
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchTodos();
+  }, [fetchTodos]);
+
+  const toggleTodo = async (id: string) => {
+    // Find item
+    const item = todos.find((t) => t.id === id);
+    if (!item) return;
+
+    const newStatus = !item.is_done;
+
+    // Optimistically toggle
     setTodos((prev) =>
-      prev.map((t) => (t.id === id ? { ...t, done: !t.done } : t)),
+      prev.map((t) => (t.id === id ? { ...t, is_done: newStatus } : t)),
     );
+
+    try {
+      if (newStatus) {
+        await completeTodoApi(id);
+      } else {
+        await updateTodo(id, { is_done: false });
+      }
+    } catch (err) {
+      // Revert if error
+      setTodos((prev) =>
+        prev.map((t) => (t.id === id ? { ...t, is_done: item.is_done } : t)),
+      );
+      Alert.alert('Error', err instanceof Error ? err.message : 'Failed to update task');
+    }
   };
+
+  const handleUpdate = async (id: string | null, payload: TodoUpdatePayload) => {
+    try {
+      if (id) {
+        const updated = await updateTodo(id, payload);
+        setTodos((prev) => prev.map((t) => (t.id === id ? updated : t)));
+        setEditingItem(null);
+      } else {
+        const created = await createTodo(payload);
+        setTodos((prev) => [created, ...prev]);
+        setIsAdding(false);
+      }
+    } catch (err) {
+      Alert.alert('Error', err instanceof Error ? err.message : 'Failed to save to-do');
+    }
+  };
+
+  const executeDelete = async () => {
+    if (!deletingId) return;
+    try {
+      await deleteTodo(deletingId);
+      setTodos((prev) => prev.filter((t) => t.id !== deletingId));
+      setDeletingId(null);
+      setEditingItem(null); // Close edit modal as well
+    } catch (err) {
+      Alert.alert('Error', err instanceof Error ? err.message : 'Failed to delete task');
+    }
+  };
+
+  const handleFilterPress = () => {
+    setActionSheet({
+      visible: true,
+      title: 'Filter by Priority',
+      options: [
+        { label: 'All Priorities', onPress: () => setPriorityFilter('all') },
+        { label: 'High Priority', onPress: () => setPriorityFilter('high') },
+        { label: 'Medium Priority', onPress: () => setPriorityFilter('medium') },
+        { label: 'Low Priority', onPress: () => setPriorityFilter('low') },
+      ]
+    });
+  };
+
+  const handleSortPress = () => {
+    setActionSheet({
+      visible: true,
+      title: 'Sort Tasks',
+      options: [
+        { label: 'Date (Newest)', onPress: () => setSortConfig({ by: 'date', asc: false }) },
+        { label: 'Date (Oldest)', onPress: () => setSortConfig({ by: 'date', asc: true }) },
+        { label: 'Priority (High -> Low)', onPress: () => setSortConfig({ by: 'priority', asc: false }) },
+      ]
+    });
+  };
+
+  const todayStr = new Date().toISOString().split('T')[0];
+
+  // Dynamic banner stats
+  const dueTodayCount = todos.filter((t) => {
+    const effectiveDate = t.due_date || t.date;
+    return !t.is_done && effectiveDate === todayStr;
+  }).length;
+
+  const completedCount = todos.filter((t) => t.is_done).length;
+
+  // Filter list by Tab
+  const filtered = todos.filter((todo) => {
+    const effectiveDate = todo.due_date || todo.date;
+
+    if (activeTab === 'today') {
+      return !todo.is_done && effectiveDate === todayStr;
+    }
+    if (activeTab === 'upcoming') {
+      return !todo.is_done && effectiveDate > todayStr;
+    }
+    if (activeTab === 'done') {
+      return todo.is_done;
+    }
+    // "all" tab
+    return !todo.is_done;
+  });
+
+  // Filter list by Search text
+  let displayed = search.trim()
+    ? filtered.filter(
+        (todo) =>
+          todo.title.toLowerCase().includes(search.toLowerCase()) ||
+          (todo.description && todo.description.toLowerCase().includes(search.toLowerCase()))
+      )
+    : filtered;
+
+  if (priorityFilter !== 'all') {
+    displayed = displayed.filter(todo => todo.priority === priorityFilter);
+  }
+
+  const sortedAndDisplayed = [...displayed].sort((a, b) => {
+    if (sortConfig.by === 'date') {
+      const da = new Date(a.due_date || a.date || a.created_at || 0).getTime();
+      const db = new Date(b.due_date || b.date || b.created_at || 0).getTime();
+      return sortConfig.asc ? da - db : db - da;
+    } else {
+      const pMap = { high: 3, medium: 2, low: 1 };
+      const pa = pMap[a.priority] || 0;
+      const pb = pMap[b.priority] || 0;
+      return sortConfig.asc ? pa - pb : pb - pa;
+    }
+  });
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <FlatList
-        data={todos}
+        data={sortedAndDisplayed}
         keyExtractor={(item) => item.id}
         renderItem={({ item }) => (
-          <TodoCard item={item} onToggle={() => toggleTodo(item.id)} />
+          <TodoCard
+            item={item}
+            onToggle={() => toggleTodo(item.id)}
+            onEdit={() => setEditingItem(item)}
+          />
         )}
         contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={() => fetchTodos(true)} tintColor={OmniColors.ink} />
+        }
         ListHeaderComponent={
           <View style={styles.header}>
             <Pressable style={styles.backBtn} onPress={() => router.back()}>
@@ -237,11 +593,71 @@ export default function TodosScreen() {
 
             <Text style={styles.screenTitle}>To Do List</Text>
 
-            <SummaryBanner />
+            <SummaryBanner dueToday={dueTodayCount} completed={completedCount} />
             <FilterTabs active={activeTab} onSelect={setActiveTab} />
-            <SearchBar value={search} onChangeText={setSearch} />
+            <SearchBar 
+              value={search} 
+              onChangeText={setSearch} 
+              onFilterPress={handleFilterPress}
+              onSortPress={handleSortPress}
+            />
           </View>
         }
+        ListEmptyComponent={
+          loading ? (
+            <View style={styles.emptyState}>
+              <ActivityIndicator size="large" color={OmniColors.ink} />
+            </View>
+          ) : error ? (
+            <View style={styles.emptyState}>
+              <Text style={styles.emptyText}>{error}</Text>
+              <Pressable onPress={() => fetchTodos()}>
+                <Text style={{ fontFamily: OmniFonts.bodySemiBold, fontSize: 14, color: OmniColors.ink, marginTop: 4 }}>
+                  Tap to retry
+                </Text>
+              </Pressable>
+            </View>
+          ) : (
+            <View style={styles.emptyState}>
+              <Text style={styles.emptyText}>No tasks found</Text>
+              <Text style={styles.emptySubtext}>Tasks created through chat will appear here.</Text>
+            </View>
+          )
+        }
+      />
+
+      <Pressable
+        onPress={() => setIsAdding(true)}
+        style={({ pressed }) => [
+          styles.fab,
+          pressed && { opacity: 0.8 }
+        ]}
+      >
+        <MaterialIcons name="add" size={24} color="#fff" />
+      </Pressable>
+
+      <EditTodoModal
+        item={editingItem}
+        visible={editingItem !== null || isAdding}
+        isAdding={isAdding}
+        onClose={() => {
+          setEditingItem(null);
+          setIsAdding(false);
+        }}
+        onSave={handleUpdate}
+        onDelete={(id) => setDeletingId(id)}
+      />
+
+      <ConfirmDeleteModal
+        visible={deletingId !== null}
+        onClose={() => setDeletingId(null)}
+        onConfirm={executeDelete}
+      />
+      <OmniActionSheet
+        visible={actionSheet.visible}
+        title={actionSheet.title}
+        options={actionSheet.options}
+        onClose={() => setActionSheet(prev => ({ ...prev, visible: false }))}
       />
     </SafeAreaView>
   );
@@ -265,6 +681,24 @@ const styles = StyleSheet.create({
     fontFamily: OmniFonts.heading,
     fontSize: 22,
     color: OmniColors.ink,
+  },
+
+  // FAB
+  fab: {
+    position: 'absolute',
+    bottom: 32,
+    right: 24,
+    width: 48,
+    height: 48,
+    borderRadius: 12,
+    backgroundColor: OmniColors.ink,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 5,
   },
 
   // Summary banner
@@ -388,6 +822,13 @@ const styles = StyleSheet.create({
     textDecorationLine: 'line-through',
     color: OmniColors.fog,
   },
+  todoDescription: {
+    fontFamily: OmniFonts.body,
+    fontSize: 13,
+    color: '#71717A',
+    marginTop: 4,
+    lineHeight: 18,
+  },
 
   // Tags
   tagRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginTop: 6 },
@@ -420,5 +861,209 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: 2,
+  },
+
+  // Empty states
+  emptyState: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 48,
+    gap: 8,
+  },
+  emptyText: {
+    fontFamily: OmniFonts.bodySemiBold,
+    fontSize: 14,
+    color: '#71717A',
+  },
+  emptySubtext: {
+    fontFamily: OmniFonts.body,
+    fontSize: 13,
+    color: '#A1A1AA',
+    textAlign: 'center',
+    maxWidth: 240,
+  },
+
+  // Modal bottom sheet
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'flex-end',
+  },
+  modalSheet: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: 20,
+    paddingBottom: 36,
+    paddingTop: 12,
+    gap: 8,
+  },
+  modalHandle: {
+    width: 36,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: '#D4D4D8',
+    alignSelf: 'center',
+    marginBottom: 8,
+  },
+  modalTitle: {
+    fontFamily: OmniFonts.heading,
+    fontSize: 18,
+    color: OmniColors.ink,
+    marginBottom: 4,
+  },
+  editLabel: {
+    fontFamily: OmniFonts.bodySemiBold,
+    fontSize: 11,
+    color: '#71717A',
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+  },
+  editInput: {
+    fontFamily: OmniFonts.body,
+    fontSize: 14,
+    borderWidth: 1,
+    borderColor: '#E4E4E7',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    backgroundColor: '#FAFAFA',
+    color: '#18181B',
+  },
+  editInputMultiline: {
+    minHeight: 80,
+    maxHeight: 160,
+    textAlignVertical: 'top',
+  },
+  typeToggleRow: {
+    flexDirection: 'row',
+    gap: 6,
+  },
+  typeToggleBtn: {
+    flex: 1,
+    height: 40,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#E4E4E7',
+    backgroundColor: '#FAFAFA',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  typeToggleBtnActive: {
+    backgroundColor: OmniColors.ink,
+    borderColor: OmniColors.ink,
+  },
+  typeToggleText: {
+    fontFamily: OmniFonts.bodySemiBold,
+    fontSize: 13,
+    color: '#71717A',
+  },
+  typeToggleTextActive: {
+    color: '#fff',
+  },
+  editActions: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 8,
+  },
+  editCancelBtn: {
+    flex: 1,
+    height: 44,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: OmniColors.mist,
+    backgroundColor: '#fff',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  editCancelText: {
+    fontFamily: OmniFonts.bodySemiBold,
+    fontSize: 14,
+    color: '#52525B',
+  },
+  editSaveBtn: {
+    flex: 1,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: OmniColors.ink,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  editSaveText: {
+    fontFamily: OmniFonts.bodySemiBold,
+    fontSize: 14,
+    color: '#fff',
+  },
+
+  // Confirm delete modal
+  modalOverlayCenter: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+  },
+  confirmModalBox: {
+    width: '100%',
+    maxWidth: 320,
+    backgroundColor: '#fff',
+    borderRadius: 24,
+    padding: 24,
+    alignItems: 'center',
+  },
+  confirmIconBox: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: '#FEE2E2',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+  },
+  confirmTitle: {
+    fontFamily: OmniFonts.heading,
+    fontSize: 18,
+    color: OmniColors.ink,
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  confirmText: {
+    fontFamily: OmniFonts.body,
+    fontSize: 14,
+    color: '#52525B',
+    textAlign: 'center',
+    lineHeight: 20,
+    marginBottom: 24,
+  },
+  confirmActions: {
+    flexDirection: 'row',
+    gap: 12,
+    width: '100%',
+  },
+  confirmCancelBtn: {
+    flex: 1,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: OmniColors.paper,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  confirmCancelText: {
+    fontFamily: OmniFonts.bodySemiBold,
+    fontSize: 14,
+    color: '#52525B',
+  },
+  confirmDeleteBtn: {
+    flex: 1,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: '#EF4444',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  confirmDeleteText: {
+    fontFamily: OmniFonts.bodySemiBold,
+    fontSize: 14,
+    color: '#fff',
   },
 });

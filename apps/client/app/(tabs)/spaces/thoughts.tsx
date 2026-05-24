@@ -1,7 +1,7 @@
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   FlatList,
   Pressable,
@@ -9,63 +9,33 @@ import {
   Text,
   TextInput,
   View,
+  ActivityIndicator,
+  RefreshControl,
+  Modal,
+  KeyboardAvoidingView,
+  Platform,
+  Alert,
 } from 'react-native';
+import { OmniActionSheet, ActionOption } from '@/components/ui/OmniActionSheet';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { OmniColors, OmniFonts, OmniGradient } from '@/constants/theme';
+import {
+  listNotes,
+  createNote,
+  updateNote,
+  deleteNote,
+  NoteItem,
+  NoteUpdatePayload,
+} from '@/api/client';
 
 // ── Types ───────────────────────────────────────────────────────────
 
-type Thought = {
-  id: string;
-  category: string;
-  time: string;
-  title: string;
-  body: string;
-  action: string;
-};
-
 type TabKey = 'all' | 'product' | 'ops' | 'personal';
-
-// ── Static data (swap with API later) ───────────────────────────────
-
-const THOUGHTS: Thought[] = [
-  {
-    id: '1',
-    category: 'Ops',
-    time: '2h ago',
-    title: 'Offsite venue direction',
-    body: 'Prefer spaces with strong train access, two breakout rooms, and quiet corners for one-on-ones.',
-    action: 'Task',
-  },
-  {
-    id: '2',
-    category: 'Product',
-    time: 'Yesterday',
-    title: 'Q2 launch comms angle',
-    body: 'Position launch around fewer taps to capture intent and faster confirmation loops for teams.',
-    action: 'Pin',
-  },
-  {
-    id: '3',
-    category: 'Product',
-    time: 'Feb 19',
-    title: 'Client onboarding insight',
-    body: 'First-week setup should include templates for transactions and tasks to reduce blank-state friction.',
-    action: 'List',
-  },
-];
-
-const TABS: { key: TabKey; label: string }[] = [
-  { key: 'all',      label: 'All' },
-  { key: 'product',  label: 'Product' },
-  { key: 'ops',      label: 'Ops' },
-  { key: 'personal', label: 'Personal' },
-];
 
 // ── Sub-components ──────────────────────────────────────────────────
 
-function SummaryBanner() {
+function SummaryBanner({ total, pinned }: { total: number; pinned: number }) {
   return (
     <LinearGradient
       colors={OmniGradient}
@@ -75,55 +45,29 @@ function SummaryBanner() {
     >
       <View style={styles.bannerRow}>
         <View style={styles.bannerStat}>
-          <Text style={styles.bannerStatLabel}>Captured</Text>
-          <Text style={styles.bannerStatValue}>18</Text>
+          <Text style={styles.bannerStatLabel}>Saved</Text>
+          <Text style={styles.bannerStatValue}>{total}</Text>
         </View>
         <View style={styles.bannerStat}>
           <Text style={styles.bannerStatLabel}>Pinned</Text>
-          <Text style={styles.bannerStatValue}>4</Text>
-        </View>
-        <View style={styles.bannerStat}>
-          <Text style={styles.bannerStatLabel}>Converted</Text>
-          <Text style={styles.bannerStatValue}>7</Text>
+          <Text style={styles.bannerStatValue}>{pinned}</Text>
         </View>
       </View>
     </LinearGradient>
   );
 }
 
-function FilterTabs({
-  active,
-  onSelect,
-}: {
-  active: TabKey;
-  onSelect: (key: TabKey) => void;
-}) {
-  return (
-    <View style={styles.tabRow}>
-      {TABS.map((tab) => {
-        const isActive = tab.key === active;
-        return (
-          <Pressable
-            key={tab.key}
-            style={[styles.tab, isActive ? styles.tabActive : styles.tabInactive]}
-            onPress={() => onSelect(tab.key)}
-          >
-            <Text style={isActive ? styles.tabTextActive : styles.tabTextInactive}>
-              {tab.label}
-            </Text>
-          </Pressable>
-        );
-      })}
-    </View>
-  );
-}
 
 function SearchBar({
   value,
   onChangeText,
+  onFilterPress,
+  onSortPress,
 }: {
   value: string;
   onChangeText: (t: string) => void;
+  onFilterPress: () => void;
+  onSortPress: () => void;
 }) {
   return (
     <View style={styles.toolbarCard}>
@@ -138,10 +82,10 @@ function SearchBar({
             onChangeText={onChangeText}
           />
         </View>
-        <Pressable style={styles.toolBtn}>
+        <Pressable style={styles.toolBtn} onPress={onFilterPress}>
           <MaterialIcons name="filter-list" size={14} color={OmniColors.charcoal} />
         </Pressable>
-        <Pressable style={[styles.toolBtn, styles.toolBtnSubtle]}>
+        <Pressable style={[styles.toolBtn, styles.toolBtnSubtle]} onPress={onSortPress}>
           <MaterialIcons name="swap-vert" size={14} color="#52525B" />
         </Pressable>
       </View>
@@ -149,25 +93,225 @@ function SearchBar({
   );
 }
 
-function ThoughtCard({ item }: { item: Thought }) {
+function ThoughtCard({
+  item,
+  onEdit,
+  onTogglePin,
+}: {
+  item: NoteItem;
+  onEdit: () => void;
+  onTogglePin: () => void;
+}) {
+  const getCategory = (tags: string[]) => {
+    if (!tags || tags.length === 0) return 'NOTE';
+    const known = ['product', 'ops', 'personal'];
+    const found = tags.find((t) => known.includes(t.toLowerCase()));
+    return found ? found.toUpperCase() : tags[0].toUpperCase();
+  };
+
+  const formatTime = (createdAt: string) => {
+    const d = new Date(createdAt);
+    if (isNaN(d.getTime())) return '';
+    const now = new Date();
+    const diffMs = now.getTime() - d.getTime();
+    const diffHrs = Math.floor(diffMs / (1000 * 60 * 60));
+    if (diffHrs < 24 && diffHrs >= 0) {
+      if (diffHrs === 0) {
+        const mins = Math.floor(diffMs / (1000 * 60));
+        return `${mins || 1}m ago`;
+      }
+      return `${diffHrs}h ago`;
+    }
+    const diffDays = Math.floor(diffHrs / 24);
+    if (diffDays === 1) return 'Yesterday';
+    return d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+  };
+
+  const isPinned = item.tags.some((t) => t.toLowerCase() === 'pinned' || t.toLowerCase() === 'pin');
+
   return (
-    <View style={styles.thoughtCard}>
+    <Pressable
+      onPress={onEdit}
+      style={({ pressed }) => [
+        styles.thoughtCard,
+        pressed && { opacity: 0.6 }
+      ]}
+    >
       <View style={styles.thoughtTop}>
         <View style={styles.thoughtLeft}>
           <View style={styles.metaRow}>
             <View style={styles.categoryBadge}>
-              <Text style={styles.categoryText}>{item.category}</Text>
+              <Text style={styles.categoryText}>{getCategory(item.tags)}</Text>
             </View>
-            <Text style={styles.timeText}>{item.time}</Text>
+            <Text style={styles.timeText}>{formatTime(item.created_at)}</Text>
           </View>
-          <Text style={styles.thoughtTitle}>{item.title}</Text>
-          <Text style={styles.thoughtBody}>{item.body}</Text>
+          <Text style={styles.thoughtTitle}>{item.title || 'Untitled thought'}</Text>
+          <Text style={styles.thoughtBody} numberOfLines={1}>{item.content}</Text>
         </View>
-        <Pressable style={styles.actionBtn}>
-          <Text style={styles.actionBtnText}>{item.action}</Text>
+        <Pressable style={[styles.actionBtn, isPinned && { backgroundColor: OmniColors.paper }]} onPress={onTogglePin}>
+          <Text style={[styles.actionBtnText, isPinned && { color: OmniColors.ink }]}>{isPinned ? 'Pinned' : 'Pin'}</Text>
         </Pressable>
       </View>
-    </View>
+    </Pressable>
+  );
+}
+
+// ── Edit Modal ──────────────────────────────────────────────────────
+
+function EditNoteModal({
+  item,
+  visible,
+  onClose,
+  onSave,
+  onDelete,
+  isAdding,
+}: {
+  item: NoteItem | null;
+  visible: boolean;
+  onClose: () => void;
+  onSave: (id: string | null, payload: NoteUpdatePayload) => void;
+  onDelete: (id: string) => void;
+  isAdding?: boolean;
+}) {
+  const [editFields, setEditFields] = useState({
+    title: '',
+    content: '',
+    tags: '',
+  });
+
+  useEffect(() => {
+    if (item) {
+      setEditFields({
+        title: item.title || '',
+        content: item.content || '',
+        tags: item.tags ? item.tags.join(', ') : '',
+      });
+    } else if (isAdding) {
+      setEditFields({
+        title: '',
+        content: '',
+        tags: '',
+      });
+    }
+  }, [item, isAdding]);
+
+  if (!item && !isAdding) return null;
+
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <Pressable style={styles.modalOverlay} onPress={onClose}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={{ width: '100%' }}
+        >
+          <Pressable style={styles.modalSheet} onPress={() => {}}>
+            {/* Drag handle */}
+            <View style={styles.modalHandle} />
+
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <Text style={[styles.modalTitle, { marginBottom: 0 }]}>{isAdding ? 'Add Thought' : 'Edit Thought'}</Text>
+              {!isAdding && item && (
+                <Pressable onPress={() => onDelete(item.id)}>
+                  <MaterialIcons name="delete-outline" size={24} color="#EF4444" />
+                </Pressable>
+              )}
+            </View>
+
+            <Text style={styles.editLabel}>Title</Text>
+            <TextInput
+              style={styles.editInput}
+              value={editFields.title}
+              placeholder="Thought title"
+              placeholderTextColor="#A1A1AA"
+              onChangeText={(val) => setEditFields({ ...editFields, title: val })}
+            />
+
+            <Text style={styles.editLabel}>Content</Text>
+            <TextInput
+              style={[styles.editInput, styles.editInputMultiline]}
+              value={editFields.content}
+              placeholder="What's on your mind?"
+              placeholderTextColor="#A1A1AA"
+              multiline
+              onChangeText={(val) => setEditFields({ ...editFields, content: val })}
+            />
+
+            <Text style={styles.editLabel}>Tags</Text>
+            <TextInput
+              style={styles.editInput}
+              value={editFields.tags}
+              placeholder="Comma-separated tags (e.g. personal, school, etc)"
+              placeholderTextColor="#A1A1AA"
+              onChangeText={(val) => setEditFields({ ...editFields, tags: val })}
+            />
+
+            {/* Actions */}
+            <View style={styles.editActions}>
+              <Pressable style={styles.editCancelBtn} onPress={onClose}>
+                <Text style={styles.editCancelText}>Cancel</Text>
+              </Pressable>
+              <Pressable
+                style={[
+                  styles.editSaveBtn,
+                  !editFields.content.trim() && { opacity: 0.5, backgroundColor: OmniColors.fog }
+                ]}
+                disabled={!editFields.content.trim()}
+                onPress={() => {
+                  const tagArray = editFields.tags
+                    .split(',')
+                    .map(t => t.trim().toLowerCase())
+                    .filter(t => t.length > 0);
+
+                  onSave(item ? item.id : null, {
+                    title: editFields.title || null,
+                    content: editFields.content,
+                    tags: tagArray,
+                  });
+                }}
+              >
+                <Text style={styles.editSaveText}>Save</Text>
+              </Pressable>
+            </View>
+          </Pressable>
+        </KeyboardAvoidingView>
+      </Pressable>
+    </Modal>
+  );
+}
+
+// ── Confirm Delete Modal ────────────────────────────────────────────
+
+function ConfirmDeleteModal({
+  visible,
+  onClose,
+  onConfirm,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <Pressable style={styles.modalOverlayCenter} onPress={onClose}>
+        <Pressable style={styles.confirmModalBox} onPress={() => {}}>
+          <View style={styles.confirmIconBox}>
+            <MaterialIcons name="delete-outline" size={24} color="#EF4444" />
+          </View>
+          <Text style={styles.confirmTitle}>Delete Thought?</Text>
+          <Text style={styles.confirmText}>
+            Are you sure you want to delete this thought? This action cannot be undone.
+          </Text>
+          <View style={styles.confirmActions}>
+            <Pressable style={styles.confirmCancelBtn} onPress={onClose}>
+              <Text style={styles.confirmCancelText}>Cancel</Text>
+            </Pressable>
+            <Pressable style={styles.confirmDeleteBtn} onPress={onConfirm}>
+              <Text style={styles.confirmDeleteText}>Delete</Text>
+            </Pressable>
+          </View>
+        </Pressable>
+      </Pressable>
+    </Modal>
   );
 }
 
@@ -175,17 +319,169 @@ function ThoughtCard({ item }: { item: Thought }) {
 
 export default function ThoughtsScreen() {
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState<TabKey>('all');
   const [search, setSearch] = useState('');
+  const [thoughts, setThoughts] = useState<NoteItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [editingItem, setEditingItem] = useState<NoteItem | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [isAdding, setIsAdding] = useState(false);
+  const [tagFilter, setTagFilter] = useState<string>('all');
+  const [sortAsc, setSortAsc] = useState<boolean>(false);
+  const [actionSheet, setActionSheet] = useState<{ visible: boolean, title: string, options: ActionOption[] }>({ visible: false, title: '', options: [] });
+
+  const fetchThoughts = useCallback(async (isRefresh = false) => {
+    try {
+      if (isRefresh) {
+        setRefreshing(true);
+      } else {
+        setLoading(true);
+      }
+      setError(null);
+      const res = await listNotes();
+      setThoughts(res.items);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to fetch thoughts');
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchThoughts();
+  }, [fetchThoughts]);
+
+  const handleUpdate = async (id: string | null, payload: NoteUpdatePayload) => {
+    try {
+      if (id) {
+        const updated = await updateNote(id, payload);
+        setThoughts((prev) => prev.map((t) => (t.id === id ? updated : t)));
+        setEditingItem(null);
+      } else {
+        const created = await createNote(payload);
+        setThoughts((prev) => [created, ...prev]);
+        setIsAdding(false);
+      }
+    } catch (err) {
+      Alert.alert('Error', err instanceof Error ? err.message : 'Failed to save thought');
+    }
+  };
+
+  const executeDelete = async () => {
+    if (!deletingId) return;
+    try {
+      await deleteNote(deletingId);
+      setThoughts((prev) => prev.filter((t) => t.id !== deletingId));
+      setDeletingId(null);
+      setEditingItem(null);
+    } catch (err) {
+      Alert.alert('Error', err instanceof Error ? err.message : 'Failed to delete thought');
+    }
+  };
+
+  const handleFilterPress = () => {
+    // Dynamically get unique tags from thoughts
+    const allTags = new Set<string>();
+    thoughts.forEach(t => t.tags.forEach(tag => allTags.add(tag.toLowerCase())));
+    const uniqueTags = Array.from(allTags).sort();
+
+    const options: ActionOption[] = [
+      { label: 'All Tags', onPress: () => setTagFilter('all') }
+    ];
+
+    // Capitalize first letter for display
+    uniqueTags.forEach(tag => {
+      const displayLabel = tag.charAt(0).toUpperCase() + tag.slice(1);
+      options.push({ label: displayLabel, onPress: () => setTagFilter(tag) });
+    });
+
+    setActionSheet({
+      visible: true,
+      title: 'Filter by Tag',
+      options
+    });
+  };
+
+  const handleSortPress = () => {
+    setActionSheet({
+      visible: true,
+      title: 'Sort Thoughts',
+      options: [
+        { label: 'Date (Newest)', onPress: () => setSortAsc(false) },
+        { label: 'Date (Oldest)', onPress: () => setSortAsc(true) },
+      ]
+    });
+  };
+
+  // Filter list by Search text
+  let displayed = search.trim()
+    ? thoughts.filter(
+        (note) =>
+          (note.title && note.title.toLowerCase().includes(search.toLowerCase())) ||
+          note.content.toLowerCase().includes(search.toLowerCase())
+      )
+    : thoughts;
+
+  if (tagFilter !== 'all') {
+    displayed = displayed.filter(note => 
+      note.tags.some(t => t.toLowerCase() === tagFilter.toLowerCase())
+    );
+  }
+
+  // Sort pinned to top, then by creation date
+  const sortedAndDisplayed = [...displayed].sort((a, b) => {
+    const aPinned = a.tags.some((t) => t.toLowerCase() === 'pinned' || t.toLowerCase() === 'pin');
+    const bPinned = b.tags.some((t) => t.toLowerCase() === 'pinned' || t.toLowerCase() === 'pin');
+
+    if (aPinned && !bPinned) return -1;
+    if (!aPinned && bPinned) return 1;
+
+    const da = new Date(a.created_at).getTime();
+    const db = new Date(b.created_at).getTime();
+    return sortAsc ? da - db : db - da;
+  });
+
+  const totalCount = thoughts.length;
+  const pinnedCount = thoughts.filter((t) =>
+    t.tags.some((tag) => tag.toLowerCase() === 'pinned' || tag.toLowerCase() === 'pin')
+  ).length;
+
+  const togglePin = async (id: string) => {
+    const item = thoughts.find((t) => t.id === id);
+    if (!item) return;
+
+    const isPinned = item.tags.some((t) => t.toLowerCase() === 'pinned' || t.toLowerCase() === 'pin');
+    const newTags = isPinned
+      ? item.tags.filter((t) => t.toLowerCase() !== 'pinned' && t.toLowerCase() !== 'pin')
+      : [...item.tags, 'pinned'];
+
+    // Optimistically update
+    setThoughts((prev) => prev.map((t) => (t.id === id ? { ...t, tags: newTags } : t)));
+
+    try {
+      await updateNote(id, { tags: newTags });
+    } catch (err) {
+      // Revert if error
+      setThoughts((prev) => prev.map((t) => (t.id === id ? { ...t, tags: item.tags } : t)));
+      Alert.alert('Error', err instanceof Error ? err.message : 'Failed to update pin status');
+    }
+  };
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <FlatList
-        data={THOUGHTS}
+        data={sortedAndDisplayed}
         keyExtractor={(item) => item.id}
-        renderItem={({ item }) => <ThoughtCard item={item} />}
+        renderItem={({ item }) => (
+          <ThoughtCard item={item} onEdit={() => setEditingItem(item)} onTogglePin={() => togglePin(item.id)} />
+        )}
         contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={() => fetchThoughts(true)} tintColor={OmniColors.ink} />
+        }
         ListHeaderComponent={
           <View style={styles.header}>
             <Pressable style={styles.backBtn} onPress={() => router.back()}>
@@ -195,11 +491,70 @@ export default function ThoughtsScreen() {
 
             <Text style={styles.screenTitle}>Thoughts</Text>
 
-            <SummaryBanner />
-            <FilterTabs active={activeTab} onSelect={setActiveTab} />
-            <SearchBar value={search} onChangeText={setSearch} />
+            <SummaryBanner total={totalCount} pinned={pinnedCount} />
+            <SearchBar 
+              value={search} 
+              onChangeText={setSearch} 
+              onFilterPress={handleFilterPress}
+              onSortPress={handleSortPress}
+            />
           </View>
         }
+        ListEmptyComponent={
+          loading ? (
+            <View style={styles.emptyState}>
+              <ActivityIndicator size="large" color={OmniColors.ink} />
+            </View>
+          ) : error ? (
+            <View style={styles.emptyState}>
+              <Text style={styles.emptyText}>{error}</Text>
+              <Pressable onPress={() => fetchThoughts()}>
+                <Text style={{ fontFamily: OmniFonts.bodySemiBold, fontSize: 14, color: OmniColors.ink, marginTop: 4 }}>
+                  Tap to retry
+                </Text>
+              </Pressable>
+            </View>
+          ) : (
+            <View style={styles.emptyState}>
+              <Text style={styles.emptyText}>No thoughts found</Text>
+              <Text style={styles.emptySubtext}>Thoughts created through chat will appear here.</Text>
+            </View>
+          )
+        }
+      />
+
+      <Pressable
+        onPress={() => setIsAdding(true)}
+        style={({ pressed }) => [
+          styles.fab,
+          pressed && { opacity: 0.8 }
+        ]}
+      >
+        <MaterialIcons name="add" size={24} color="#fff" />
+      </Pressable>
+
+      <EditNoteModal
+        item={editingItem}
+        visible={editingItem !== null || isAdding}
+        isAdding={isAdding}
+        onClose={() => {
+          setEditingItem(null);
+          setIsAdding(false);
+        }}
+        onSave={handleUpdate}
+        onDelete={(id) => setDeletingId(id)}
+      />
+
+      <ConfirmDeleteModal
+        visible={deletingId !== null}
+        onClose={() => setDeletingId(null)}
+        onConfirm={executeDelete}
+      />
+      <OmniActionSheet
+        visible={actionSheet.visible}
+        title={actionSheet.title}
+        options={actionSheet.options}
+        onClose={() => setActionSheet(prev => ({ ...prev, visible: false }))}
       />
     </SafeAreaView>
   );
@@ -223,6 +578,24 @@ const styles = StyleSheet.create({
     fontFamily: OmniFonts.heading,
     fontSize: 22,
     color: OmniColors.ink,
+  },
+
+  // FAB
+  fab: {
+    position: 'absolute',
+    bottom: 32,
+    right: 24,
+    width: 48,
+    height: 48,
+    borderRadius: 12,
+    backgroundColor: OmniColors.ink,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 5,
   },
 
   // Summary banner
@@ -377,5 +750,183 @@ const styles = StyleSheet.create({
     fontFamily: OmniFonts.bodySemiBold,
     fontSize: 11,
     color: '#52525B',
+  },
+
+  // Empty states
+  emptyState: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 48,
+    gap: 8,
+  },
+  emptyText: {
+    fontFamily: OmniFonts.bodySemiBold,
+    fontSize: 14,
+    color: '#71717A',
+  },
+  emptySubtext: {
+    fontFamily: OmniFonts.body,
+    fontSize: 13,
+    color: '#A1A1AA',
+    textAlign: 'center',
+    maxWidth: 240,
+  },
+
+  // Modal bottom sheet
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'flex-end',
+  },
+  modalSheet: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: 20,
+    paddingBottom: 36,
+    paddingTop: 12,
+    gap: 8,
+  },
+  modalHandle: {
+    width: 36,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: '#D4D4D8',
+    alignSelf: 'center',
+    marginBottom: 8,
+  },
+  modalTitle: {
+    fontFamily: OmniFonts.heading,
+    fontSize: 18,
+    color: OmniColors.ink,
+    marginBottom: 4,
+  },
+  editLabel: {
+    fontFamily: OmniFonts.bodySemiBold,
+    fontSize: 11,
+    color: '#71717A',
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+  },
+  editInput: {
+    fontFamily: OmniFonts.body,
+    fontSize: 14,
+    borderWidth: 1,
+    borderColor: '#E4E4E7',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    backgroundColor: '#FAFAFA',
+    color: '#18181B',
+  },
+  editInputMultiline: {
+    minHeight: 80,
+    maxHeight: 160,
+    textAlignVertical: 'top',
+  },
+  editActions: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 8,
+  },
+  editCancelBtn: {
+    flex: 1,
+    height: 44,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: OmniColors.mist,
+    backgroundColor: '#fff',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  editCancelText: {
+    fontFamily: OmniFonts.bodySemiBold,
+    fontSize: 14,
+    color: '#52525B',
+  },
+  editSaveBtn: {
+    flex: 1,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: OmniColors.ink,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  editSaveText: {
+    fontFamily: OmniFonts.bodySemiBold,
+    fontSize: 14,
+    color: '#fff',
+  },
+
+  // Confirm delete modal
+  modalOverlayCenter: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+  },
+  confirmModalBox: {
+    width: '100%',
+    maxWidth: 320,
+    backgroundColor: '#fff',
+    borderRadius: 24,
+    padding: 24,
+    alignItems: 'center',
+  },
+  confirmIconBox: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: '#FEE2E2',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+  },
+  confirmTitle: {
+    fontFamily: OmniFonts.heading,
+    fontSize: 18,
+    color: OmniColors.ink,
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  confirmText: {
+    fontFamily: OmniFonts.body,
+    fontSize: 14,
+    color: '#52525B',
+    textAlign: 'center',
+    lineHeight: 20,
+    marginBottom: 24,
+  },
+  confirmActions: {
+    flexDirection: 'row',
+    gap: 12,
+    width: '100%',
+  },
+  confirmCancelBtn: {
+    flex: 1,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: OmniColors.paper,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  confirmCancelText: {
+    fontFamily: OmniFonts.bodySemiBold,
+    fontSize: 14,
+    color: '#52525B',
+  },
+  confirmDeleteBtn: {
+    flex: 1,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: '#EF4444',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  confirmDeleteText: {
+    fontFamily: OmniFonts.bodySemiBold,
+    fontSize: 14,
+    color: '#fff',
   },
 });
