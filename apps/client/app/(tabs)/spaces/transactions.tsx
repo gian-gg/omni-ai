@@ -16,6 +16,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { OmniDatePicker } from '@/components/ui/OmniDatePicker';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { OmniColors, OmniFonts, OmniGradient } from '@/constants/theme';
@@ -228,7 +229,9 @@ function EditTransactionModal({
     amount: 0,
     description: '',
     category: '',
+    date: new Date(),
   });
+  const [showDatePicker, setShowDatePicker] = useState(false);
 
   useEffect(() => {
     if (item) {
@@ -237,6 +240,7 @@ function EditTransactionModal({
         amount: item.amount,
         description: item.description || '',
         category: item.category || '',
+        date: item.date ? new Date(item.date) : new Date(item.created_at || Date.now()),
       });
     } else if (isAdding) {
       setEditFields({
@@ -244,6 +248,7 @@ function EditTransactionModal({
         amount: 0,
         description: '',
         category: '',
+        date: new Date(),
       });
     }
   }, [item, isAdding]);
@@ -302,6 +307,26 @@ function EditTransactionModal({
             </View>
 
             {/* Fields */}
+            <Text style={styles.editLabel}>Date</Text>
+            <Pressable
+              style={styles.editInput}
+              onPress={() => setShowDatePicker(true)}
+            >
+              <Text style={{ color: editFields.date ? OmniColors.ink : '#A1A1AA' }}>
+                {editFields.date ? editFields.date.toISOString().split('T')[0] : 'YYYY-MM-DD'}
+              </Text>
+            </Pressable>
+
+            {/* Date Picker Modal */}
+            <OmniDatePicker
+              visible={showDatePicker}
+              value={editFields.date || new Date()}
+              onClose={() => setShowDatePicker(false)}
+              onChange={(selectedDate) => {
+                setEditFields({ ...editFields, date: selectedDate });
+              }}
+            />
+
             <Text style={styles.editLabel}>Amount ($)</Text>
             <TextInput
               style={styles.editInput}
@@ -344,6 +369,7 @@ function EditTransactionModal({
                     amount: editFields.amount,
                     description: editFields.description || null,
                     category: editFields.category || null,
+                    date: editFields.date ? editFields.date.toISOString().split('T')[0] : undefined,
                   })
                 }
               >

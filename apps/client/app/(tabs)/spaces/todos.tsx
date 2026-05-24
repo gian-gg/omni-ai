@@ -16,6 +16,7 @@ import {
   Platform,
   Alert,
 } from 'react-native';
+import { OmniDatePicker } from '@/components/ui/OmniDatePicker';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { OmniColors, OmniFonts, OmniGradient } from '@/constants/theme';
@@ -221,23 +222,24 @@ function EditTodoModal({
   const [editFields, setEditFields] = useState({
     title: '',
     description: '',
-    due_date: '',
+    due_date: undefined as Date | undefined,
     priority: 'medium' as Priority,
   });
+  const [showDatePicker, setShowDatePicker] = useState(false);
 
   useEffect(() => {
     if (item) {
       setEditFields({
         title: item.title,
         description: item.description || '',
-        due_date: item.due_date || '',
+        due_date: item.due_date ? new Date(item.due_date) : undefined,
         priority: item.priority,
       });
     } else if (isAdding) {
       setEditFields({
         title: '',
         description: '',
-        due_date: '',
+        due_date: new Date(),
         priority: 'medium',
       });
     }
@@ -306,12 +308,23 @@ function EditTodoModal({
             />
 
             <Text style={styles.editLabel}>Due Date</Text>
-            <TextInput
+            <Pressable
               style={styles.editInput}
-              value={editFields.due_date}
-              placeholder="YYYY-MM-DD"
-              placeholderTextColor="#A1A1AA"
-              onChangeText={(val) => setEditFields({ ...editFields, due_date: val })}
+              onPress={() => setShowDatePicker(true)}
+            >
+              <Text style={{ color: editFields.due_date ? OmniColors.ink : '#A1A1AA' }}>
+                {editFields.due_date ? editFields.due_date.toISOString().split('T')[0] : 'No due date'}
+              </Text>
+            </Pressable>
+
+            {/* Date Picker Modal */}
+            <OmniDatePicker
+              visible={showDatePicker}
+              value={editFields.due_date || new Date()}
+              onClose={() => setShowDatePicker(false)}
+              onChange={(selectedDate) => {
+                setEditFields({ ...editFields, due_date: selectedDate });
+              }}
             />
 
             {/* Actions */}
@@ -325,7 +338,7 @@ function EditTodoModal({
                   onSave(item ? item.id : null, {
                     title: editFields.title,
                     description: editFields.description || null,
-                    due_date: editFields.due_date || null,
+                    due_date: editFields.due_date ? editFields.due_date.toISOString().split('T')[0] : null,
                     priority: editFields.priority,
                   })
                 }
