@@ -232,6 +232,30 @@ export async function completeTodoApi(id: string): Promise<TodoItem> {
   });
 }
 
+export type TodoUpdatePayload = {
+  title?: string;
+  description?: string | null;
+  due_date?: string | null;
+  priority?: 'low' | 'medium' | 'high';
+  is_done?: boolean;
+};
+
+export async function updateTodo(
+  id: string,
+  payload: TodoUpdatePayload,
+): Promise<TodoItem> {
+  return apiFetch<TodoItem>(`/todos/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function deleteTodo(id: string): Promise<void> {
+  await apiFetch<void>(`/todos/${id}`, {
+    method: 'DELETE',
+  });
+}
+
 // ── Notes ───────────────────────────────────────────────────────────
 
 export type NoteItem = {

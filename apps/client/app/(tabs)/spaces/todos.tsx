@@ -11,11 +11,22 @@ import {
   View,
   ActivityIndicator,
   RefreshControl,
+  Modal,
+  KeyboardAvoidingView,
+  Platform,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { OmniColors, OmniFonts, OmniGradient } from '@/constants/theme';
-import { listTodos, completeTodoApi, TodoItem } from '@/api/client';
+import {
+  listTodos,
+  completeTodoApi,
+  updateTodo,
+  deleteTodo,
+  TodoItem,
+  TodoUpdatePayload,
+} from '@/api/client';
 
 // ── Types ───────────────────────────────────────────────────────────
 
@@ -133,9 +144,11 @@ function PriorityBadge({ priority }: { priority: Priority }) {
 function TodoCard({
   item,
   onToggle,
+  onEdit,
 }: {
   item: TodoItem;
   onToggle: () => void;
+  onEdit: () => void;
 }) {
   const formatDateLabel = (dateStr: string | null) => {
     if (!dateStr) return 'No date';
@@ -145,7 +158,13 @@ function TodoCard({
   };
 
   return (
-    <View style={styles.todoCard}>
+    <Pressable
+      onPress={onEdit}
+      style={({ pressed }) => [
+        styles.todoCard,
+        pressed && { opacity: 0.6 }
+      ]}
+    >
       <View style={styles.todoTop}>
         <View style={styles.todoLeft}>
           <View style={styles.todoTitleRow}>
@@ -155,19 +174,21 @@ function TodoCard({
             <PriorityBadge priority={item.priority} />
           </View>
           <View style={styles.tagRow}>
-            <View style={styles.tag}>
-              <Text style={styles.tagTextBold}>
-                {formatDateLabel(item.due_date || item.date)}
-              </Text>
-            </View>
-            <View style={styles.tag}>
-              <Text style={styles.tagText} numberOfLines={1}>
-                {item.description || 'Task'}
-              </Text>
-            </View>
+            {(item.due_date || item.date) && (
+              <View style={styles.tag}>
+                <Text style={styles.tagTextBold}>
+                  {formatDateLabel(item.due_date || item.date)}
+                </Text>
+              </View>
+            )}
+            {item.description ? (
+              <View style={[styles.tag, { paddingHorizontal: 6 }]}>
+                <MaterialIcons name="notes" size={14} color="#52525B" />
+              </View>
+            ) : null}
           </View>
         </View>
-        <Pressable style={styles.checkBtn} onPress={onToggle} disabled={item.is_done}>
+        <Pressable style={styles.checkBtn} onPress={onToggle}>
           <MaterialIcons
             name={item.is_done ? 'check-box' : 'check-box-outline-blank'}
             size={20}
@@ -175,7 +196,171 @@ function TodoCard({
           />
         </Pressable>
       </View>
-    </View>
+    </Pressable>
+  );
+}
+
+// ── Edit Modal ──────────────────────────────────────────────────────
+
+function EditTodoModal({
+  item,
+  visible,
+  onClose,
+  onSave,
+  onDelete,
+}: {
+  item: TodoItem | null;
+  visible: boolean;
+  onClose: () => void;
+  onSave: (id: string, payload: TodoUpdatePayload) => void;
+  onDelete: (id: string) => void;
+}) {
+  const [editFields, setEditFields] = useState({
+    title: '',
+    description: '',
+    due_date: '',
+    priority: 'medium' as Priority,
+  });
+
+  useEffect(() => {
+    if (item) {
+      setEditFields({
+        title: item.title,
+        description: item.description || '',
+        due_date: item.due_date || '',
+        priority: item.priority,
+      });
+    }
+  }, [item]);
+
+  if (!item) return null;
+
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <Pressable style={styles.modalOverlay} onPress={onClose}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={{ width: '100%' }}
+        >
+          <Pressable style={styles.modalSheet} onPress={() => {}}>
+            {/* Drag handle */}
+            <View style={styles.modalHandle} />
+
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <Text style={[styles.modalTitle, { marginBottom: 0 }]}>Edit To-Do</Text>
+              <Pressable onPress={() => onDelete(item.id)}>
+                <MaterialIcons name="delete-outline" size={24} color="#EF4444" />
+              </Pressable>
+            </View>
+
+            <Text style={styles.editLabel}>Title</Text>
+            <TextInput
+              style={styles.editInput}
+              value={editFields.title}
+              placeholder="Task title"
+              placeholderTextColor="#A1A1AA"
+              onChangeText={(val) => setEditFields({ ...editFields, title: val })}
+            />
+
+            <Text style={styles.editLabel}>Priority</Text>
+            <View style={styles.typeToggleRow}>
+              {(['low', 'medium', 'high'] as Priority[]).map((p) => (
+                <Pressable
+                  key={p}
+                  style={[styles.typeToggleBtn, editFields.priority === p && styles.typeToggleBtnActive]}
+                  onPress={() => setEditFields({ ...editFields, priority: p })}
+                >
+                  <Text
+                    style={[
+                      styles.typeToggleText,
+                      editFields.priority === p && styles.typeToggleTextActive,
+                      { textTransform: 'capitalize' }
+                    ]}
+                  >
+                    {p}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+
+            <Text style={styles.editLabel}>Description</Text>
+            <TextInput
+              style={[styles.editInput, styles.editInputMultiline]}
+              value={editFields.description}
+              placeholder="Additional details..."
+              placeholderTextColor="#A1A1AA"
+              multiline
+              onChangeText={(val) => setEditFields({ ...editFields, description: val })}
+            />
+
+            <Text style={styles.editLabel}>Due Date</Text>
+            <TextInput
+              style={styles.editInput}
+              value={editFields.due_date}
+              placeholder="YYYY-MM-DD"
+              placeholderTextColor="#A1A1AA"
+              onChangeText={(val) => setEditFields({ ...editFields, due_date: val })}
+            />
+
+            {/* Actions */}
+            <View style={styles.editActions}>
+              <Pressable style={styles.editCancelBtn} onPress={onClose}>
+                <Text style={styles.editCancelText}>Cancel</Text>
+              </Pressable>
+              <Pressable
+                style={styles.editSaveBtn}
+                onPress={() =>
+                  onSave(item.id, {
+                    title: editFields.title,
+                    description: editFields.description || null,
+                    due_date: editFields.due_date || null,
+                    priority: editFields.priority,
+                  })
+                }
+              >
+                <Text style={styles.editSaveText}>Save</Text>
+              </Pressable>
+            </View>
+          </Pressable>
+        </KeyboardAvoidingView>
+      </Pressable>
+    </Modal>
+  );
+}
+
+// ── Confirm Delete Modal ────────────────────────────────────────────
+
+function ConfirmDeleteModal({
+  visible,
+  onClose,
+  onConfirm,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <Pressable style={styles.modalOverlayCenter} onPress={onClose}>
+        <Pressable style={styles.confirmModalBox} onPress={() => {}}>
+          <View style={styles.confirmIconBox}>
+            <MaterialIcons name="delete-outline" size={24} color="#EF4444" />
+          </View>
+          <Text style={styles.confirmTitle}>Delete Task?</Text>
+          <Text style={styles.confirmText}>
+            Are you sure you want to delete this to-do? This action cannot be undone.
+          </Text>
+          <View style={styles.confirmActions}>
+            <Pressable style={styles.confirmCancelBtn} onPress={onClose}>
+              <Text style={styles.confirmCancelText}>Cancel</Text>
+            </Pressable>
+            <Pressable style={styles.confirmDeleteBtn} onPress={onConfirm}>
+              <Text style={styles.confirmDeleteText}>Delete</Text>
+            </Pressable>
+          </View>
+        </Pressable>
+      </Pressable>
+    </Modal>
   );
 }
 
@@ -189,6 +374,8 @@ export default function TodosScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [editingItem, setEditingItem] = useState<TodoItem | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const fetchTodos = useCallback(async (isRefresh = false) => {
     try {
@@ -215,46 +402,77 @@ export default function TodosScreen() {
   const toggleTodo = async (id: string) => {
     // Find item
     const item = todos.find((t) => t.id === id);
-    if (!item || item.is_done) return;
+    if (!item) return;
 
-    // Optimistically mark as done
+    const newStatus = !item.is_done;
+
+    // Optimistically toggle
     setTodos((prev) =>
-      prev.map((t) => (t.id === id ? { ...t, is_done: true } : t)),
+      prev.map((t) => (t.id === id ? { ...t, is_done: newStatus } : t)),
     );
 
     try {
-      await completeTodoApi(id);
+      if (newStatus) {
+        await completeTodoApi(id);
+      } else {
+        await updateTodo(id, { is_done: false });
+      }
     } catch (err) {
       // Revert if error
       setTodos((prev) =>
-        prev.map((t) => (t.id === id ? { ...t, is_done: false } : t)),
+        prev.map((t) => (t.id === id ? { ...t, is_done: item.is_done } : t)),
       );
-      alert(err instanceof Error ? err.message : 'Failed to mark task as completed');
+      Alert.alert('Error', err instanceof Error ? err.message : 'Failed to update task');
+    }
+  };
+
+  const handleUpdate = async (id: string, payload: TodoUpdatePayload) => {
+    try {
+      const updated = await updateTodo(id, payload);
+      setTodos((prev) => prev.map((t) => (t.id === id ? updated : t)));
+      setEditingItem(null);
+    } catch (err) {
+      Alert.alert('Error', err instanceof Error ? err.message : 'Failed to update task');
+    }
+  };
+
+  const executeDelete = async () => {
+    if (!deletingId) return;
+    try {
+      await deleteTodo(deletingId);
+      setTodos((prev) => prev.filter((t) => t.id !== deletingId));
+      setDeletingId(null);
+      setEditingItem(null); // Close edit modal as well
+    } catch (err) {
+      Alert.alert('Error', err instanceof Error ? err.message : 'Failed to delete task');
     }
   };
 
   const todayStr = new Date().toISOString().split('T')[0];
 
   // Dynamic banner stats
-  const dueTodayCount = todos.filter(
-    (t) => !t.is_done && (t.due_date === todayStr || t.date === todayStr)
-  ).length;
+  const dueTodayCount = todos.filter((t) => {
+    const effectiveDate = t.due_date || t.date;
+    return !t.is_done && effectiveDate === todayStr;
+  }).length;
 
   const completedCount = todos.filter((t) => t.is_done).length;
 
   // Filter list by Tab
   const filtered = todos.filter((todo) => {
+    const effectiveDate = todo.due_date || todo.date;
+
     if (activeTab === 'today') {
-      return !todo.is_done && (todo.due_date === todayStr || todo.date === todayStr);
+      return !todo.is_done && effectiveDate === todayStr;
     }
     if (activeTab === 'upcoming') {
-      const due = todo.due_date || todo.date;
-      return !todo.is_done && due > todayStr;
+      return !todo.is_done && effectiveDate > todayStr;
     }
     if (activeTab === 'done') {
       return todo.is_done;
     }
-    return true;
+    // "all" tab
+    return !todo.is_done;
   });
 
   // Filter list by Search text
@@ -272,7 +490,11 @@ export default function TodosScreen() {
         data={displayed}
         keyExtractor={(item) => item.id}
         renderItem={({ item }) => (
-          <TodoCard item={item} onToggle={() => toggleTodo(item.id)} />
+          <TodoCard
+            item={item}
+            onToggle={() => toggleTodo(item.id)}
+            onEdit={() => setEditingItem(item)}
+          />
         )}
         contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
@@ -314,6 +536,20 @@ export default function TodosScreen() {
             </View>
           )
         }
+      />
+
+      <EditTodoModal
+        item={editingItem}
+        visible={editingItem !== null}
+        onClose={() => setEditingItem(null)}
+        onSave={handleUpdate}
+        onDelete={(id) => setDeletingId(id)}
+      />
+
+      <ConfirmDeleteModal
+        visible={deletingId !== null}
+        onClose={() => setDeletingId(null)}
+        onConfirm={executeDelete}
       />
     </SafeAreaView>
   );
@@ -460,6 +696,13 @@ const styles = StyleSheet.create({
     textDecorationLine: 'line-through',
     color: OmniColors.fog,
   },
+  todoDescription: {
+    fontFamily: OmniFonts.body,
+    fontSize: 13,
+    color: '#71717A',
+    marginTop: 4,
+    lineHeight: 18,
+  },
 
   // Tags
   tagRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginTop: 6 },
@@ -512,5 +755,189 @@ const styles = StyleSheet.create({
     color: '#A1A1AA',
     textAlign: 'center',
     maxWidth: 240,
+  },
+
+  // Modal bottom sheet
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'flex-end',
+  },
+  modalSheet: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: 20,
+    paddingBottom: 36,
+    paddingTop: 12,
+    gap: 8,
+  },
+  modalHandle: {
+    width: 36,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: '#D4D4D8',
+    alignSelf: 'center',
+    marginBottom: 8,
+  },
+  modalTitle: {
+    fontFamily: OmniFonts.heading,
+    fontSize: 18,
+    color: OmniColors.ink,
+    marginBottom: 4,
+  },
+  editLabel: {
+    fontFamily: OmniFonts.bodySemiBold,
+    fontSize: 11,
+    color: '#71717A',
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+  },
+  editInput: {
+    fontFamily: OmniFonts.body,
+    fontSize: 14,
+    borderWidth: 1,
+    borderColor: '#E4E4E7',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    backgroundColor: '#FAFAFA',
+    color: '#18181B',
+  },
+  editInputMultiline: {
+    minHeight: 80,
+    maxHeight: 160,
+    textAlignVertical: 'top',
+  },
+  typeToggleRow: {
+    flexDirection: 'row',
+    gap: 6,
+  },
+  typeToggleBtn: {
+    flex: 1,
+    height: 40,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#E4E4E7',
+    backgroundColor: '#FAFAFA',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  typeToggleBtnActive: {
+    backgroundColor: OmniColors.ink,
+    borderColor: OmniColors.ink,
+  },
+  typeToggleText: {
+    fontFamily: OmniFonts.bodySemiBold,
+    fontSize: 13,
+    color: '#71717A',
+  },
+  typeToggleTextActive: {
+    color: '#fff',
+  },
+  editActions: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 8,
+  },
+  editCancelBtn: {
+    flex: 1,
+    height: 44,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: OmniColors.mist,
+    backgroundColor: '#fff',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  editCancelText: {
+    fontFamily: OmniFonts.bodySemiBold,
+    fontSize: 14,
+    color: '#52525B',
+  },
+  editSaveBtn: {
+    flex: 1,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: OmniColors.ink,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  editSaveText: {
+    fontFamily: OmniFonts.bodySemiBold,
+    fontSize: 14,
+    color: '#fff',
+  },
+
+  // Confirm delete modal
+  modalOverlayCenter: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+  },
+  confirmModalBox: {
+    width: '100%',
+    maxWidth: 320,
+    backgroundColor: '#fff',
+    borderRadius: 24,
+    padding: 24,
+    alignItems: 'center',
+  },
+  confirmIconBox: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: '#FEE2E2',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+  },
+  confirmTitle: {
+    fontFamily: OmniFonts.heading,
+    fontSize: 18,
+    color: OmniColors.ink,
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  confirmText: {
+    fontFamily: OmniFonts.body,
+    fontSize: 14,
+    color: '#52525B',
+    textAlign: 'center',
+    lineHeight: 20,
+    marginBottom: 24,
+  },
+  confirmActions: {
+    flexDirection: 'row',
+    gap: 12,
+    width: '100%',
+  },
+  confirmCancelBtn: {
+    flex: 1,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: OmniColors.paper,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  confirmCancelText: {
+    fontFamily: OmniFonts.bodySemiBold,
+    fontSize: 14,
+    color: '#52525B',
+  },
+  confirmDeleteBtn: {
+    flex: 1,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: '#EF4444',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  confirmDeleteText: {
+    fontFamily: OmniFonts.bodySemiBold,
+    fontSize: 14,
+    color: '#fff',
   },
 });
