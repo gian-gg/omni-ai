@@ -23,6 +23,7 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useSpeechRecognitionEvent, ExpoSpeechRecognitionModule } from 'expo-speech-recognition';
 
 type Message =
   | { id: string; type: 'divider'; label: string }
@@ -570,6 +571,38 @@ export default function ChatScreen() {
   const [inputText, setInputText] = useState('');
   const [isSending, setIsSending] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  
+  // Speech-to-Text State
+  const [recognizing, setRecognizing] = useState(false);
+
+  useSpeechRecognitionEvent('start', () => setRecognizing(true));
+  useSpeechRecognitionEvent('end', () => setRecognizing(false));
+  useSpeechRecognitionEvent('error', (event) => {
+    console.log('Speech error:', event.error, event.message);
+    setRecognizing(false);
+  });
+  useSpeechRecognitionEvent('result', (event) => {
+    const transcript = event.results[0]?.transcript;
+    if (transcript) {
+      setInputText(transcript);
+    }
+  });
+
+  const toggleRecording = async () => {
+    if (recognizing) {
+      ExpoSpeechRecognitionModule.stop();
+    } else {
+      const hasPermission = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
+      if (!hasPermission.granted) {
+        alert('Microphone permission is required for dictation.');
+        return;
+      }
+      ExpoSpeechRecognitionModule.start({
+        lang: 'en-US',
+        interimResults: true,
+      });
+    }
+  };
 
   const flatListRef = useRef<FlatList<Message>>(null);
   const translateX = useRef(new Animated.Value(-DRAWER_WIDTH)).current;
@@ -750,13 +783,16 @@ export default function ChatScreen() {
         {/* Input bar */}
         <View style={styles.inputSection}>
           <View style={styles.inputBar}>
-            <Pressable style={styles.plusBtn}>
-              <MaterialIcons name="add" size={22} color="#3F3F46" />
+            <Pressable 
+              style={[styles.plusBtn, recognizing && { backgroundColor: '#FEE2E2', borderColor: '#FCA5A5', borderWidth: 1 }]}
+              onPress={toggleRecording}
+            >
+              <MaterialIcons name={recognizing ? "stop" : "mic"} size={22} color={recognizing ? "#EF4444" : "#3F3F46"} />
             </Pressable>
             <TextInput
               style={styles.textInput}
-              placeholder="Describe what happened in natural language..."
-              placeholderTextColor="#A1A1AA"
+              placeholder={recognizing ? "Listening..." : "Describe what happened in natural language..."}
+              placeholderTextColor={recognizing ? "#EF4444" : "#A1A1AA"}
               value={inputText}
               onChangeText={setInputText}
               multiline
