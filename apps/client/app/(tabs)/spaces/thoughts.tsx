@@ -11,11 +11,21 @@ import {
   View,
   ActivityIndicator,
   RefreshControl,
+  Modal,
+  KeyboardAvoidingView,
+  Platform,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { OmniColors, OmniFonts, OmniGradient } from '@/constants/theme';
-import { listNotes, NoteItem } from '@/api/client';
+import {
+  listNotes,
+  updateNote,
+  deleteNote,
+  NoteItem,
+  NoteUpdatePayload,
+} from '@/api/client';
 
 // ── Types ───────────────────────────────────────────────────────────
 
@@ -114,7 +124,15 @@ function SearchBar({
   );
 }
 
-function ThoughtCard({ item }: { item: NoteItem }) {
+function ThoughtCard({
+  item,
+  onEdit,
+  onTogglePin,
+}: {
+  item: NoteItem;
+  onEdit: () => void;
+  onTogglePin: () => void;
+}) {
   const getCategory = (tags: string[]) => {
     if (!tags || tags.length === 0) return 'Note';
     const known = ['product', 'ops', 'personal'];
@@ -143,7 +161,13 @@ function ThoughtCard({ item }: { item: NoteItem }) {
   const isPinned = item.tags.some((t) => t.toLowerCase() === 'pinned' || t.toLowerCase() === 'pin');
 
   return (
-    <View style={styles.thoughtCard}>
+    <Pressable
+      onPress={onEdit}
+      style={({ pressed }) => [
+        styles.thoughtCard,
+        pressed && { opacity: 0.6 }
+      ]}
+    >
       <View style={styles.thoughtTop}>
         <View style={styles.thoughtLeft}>
           <View style={styles.metaRow}>
@@ -153,13 +177,145 @@ function ThoughtCard({ item }: { item: NoteItem }) {
             <Text style={styles.timeText}>{formatTime(item.created_at)}</Text>
           </View>
           <Text style={styles.thoughtTitle}>{item.title || 'Untitled thought'}</Text>
-          <Text style={styles.thoughtBody}>{item.content}</Text>
+          <Text style={styles.thoughtBody} numberOfLines={1}>{item.content}</Text>
         </View>
-        <Pressable style={styles.actionBtn}>
-          <Text style={styles.actionBtnText}>{isPinned ? 'Pinned' : 'Pin'}</Text>
+        <Pressable style={[styles.actionBtn, isPinned && { backgroundColor: OmniColors.paper }]} onPress={onTogglePin}>
+          <Text style={[styles.actionBtnText, isPinned && { color: OmniColors.ink }]}>{isPinned ? 'Pinned' : 'Pin'}</Text>
         </Pressable>
       </View>
-    </View>
+    </Pressable>
+  );
+}
+
+// ── Edit Modal ──────────────────────────────────────────────────────
+
+function EditNoteModal({
+  item,
+  visible,
+  onClose,
+  onSave,
+  onDelete,
+}: {
+  item: NoteItem | null;
+  visible: boolean;
+  onClose: () => void;
+  onSave: (id: string, payload: NoteUpdatePayload) => void;
+  onDelete: (id: string) => void;
+}) {
+  const [editFields, setEditFields] = useState({
+    title: '',
+    content: '',
+  });
+
+  useEffect(() => {
+    if (item) {
+      setEditFields({
+        title: item.title || '',
+        content: item.content || '',
+      });
+    }
+  }, [item]);
+
+  if (!item) return null;
+
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <Pressable style={styles.modalOverlay} onPress={onClose}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={{ width: '100%' }}
+        >
+          <Pressable style={styles.modalSheet} onPress={() => {}}>
+            {/* Drag handle */}
+            <View style={styles.modalHandle} />
+
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <Text style={[styles.modalTitle, { marginBottom: 0 }]}>Edit Thought</Text>
+              <Pressable onPress={() => onDelete(item.id)}>
+                <MaterialIcons name="delete-outline" size={24} color="#EF4444" />
+              </Pressable>
+            </View>
+
+            <Text style={styles.editLabel}>Title</Text>
+            <TextInput
+              style={styles.editInput}
+              value={editFields.title}
+              placeholder="Thought title"
+              placeholderTextColor="#A1A1AA"
+              onChangeText={(val) => setEditFields({ ...editFields, title: val })}
+            />
+
+            <Text style={styles.editLabel}>Content</Text>
+            <TextInput
+              style={[styles.editInput, styles.editInputMultiline]}
+              value={editFields.content}
+              placeholder="What's on your mind?"
+              placeholderTextColor="#A1A1AA"
+              multiline
+              onChangeText={(val) => setEditFields({ ...editFields, content: val })}
+            />
+
+            {/* Actions */}
+            <View style={styles.editActions}>
+              <Pressable style={styles.editCancelBtn} onPress={onClose}>
+                <Text style={styles.editCancelText}>Cancel</Text>
+              </Pressable>
+              <Pressable
+                style={[
+                  styles.editSaveBtn,
+                  !editFields.content.trim() && { opacity: 0.5, backgroundColor: OmniColors.fog }
+                ]}
+                disabled={!editFields.content.trim()}
+                onPress={() => {
+                  onSave(item.id, {
+                    title: editFields.title || null,
+                    content: editFields.content,
+                  });
+                }}
+              >
+                <Text style={styles.editSaveText}>Save</Text>
+              </Pressable>
+            </View>
+          </Pressable>
+        </KeyboardAvoidingView>
+      </Pressable>
+    </Modal>
+  );
+}
+
+// ── Confirm Delete Modal ────────────────────────────────────────────
+
+function ConfirmDeleteModal({
+  visible,
+  onClose,
+  onConfirm,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <Pressable style={styles.modalOverlayCenter} onPress={onClose}>
+        <Pressable style={styles.confirmModalBox} onPress={() => {}}>
+          <View style={styles.confirmIconBox}>
+            <MaterialIcons name="delete-outline" size={24} color="#EF4444" />
+          </View>
+          <Text style={styles.confirmTitle}>Delete Thought?</Text>
+          <Text style={styles.confirmText}>
+            Are you sure you want to delete this thought? This action cannot be undone.
+          </Text>
+          <View style={styles.confirmActions}>
+            <Pressable style={styles.confirmCancelBtn} onPress={onClose}>
+              <Text style={styles.confirmCancelText}>Cancel</Text>
+            </Pressable>
+            <Pressable style={styles.confirmDeleteBtn} onPress={onConfirm}>
+              <Text style={styles.confirmDeleteText}>Delete</Text>
+            </Pressable>
+          </View>
+        </Pressable>
+      </Pressable>
+    </Modal>
   );
 }
 
@@ -173,6 +329,8 @@ export default function ThoughtsScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [editingItem, setEditingItem] = useState<NoteItem | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const fetchThoughts = useCallback(async (isRefresh = false) => {
     try {
@@ -196,6 +354,28 @@ export default function ThoughtsScreen() {
     fetchThoughts();
   }, [fetchThoughts]);
 
+  const handleUpdate = async (id: string, payload: NoteUpdatePayload) => {
+    try {
+      const updated = await updateNote(id, payload);
+      setThoughts((prev) => prev.map((t) => (t.id === id ? updated : t)));
+      setEditingItem(null);
+    } catch (err) {
+      Alert.alert('Error', err instanceof Error ? err.message : 'Failed to update thought');
+    }
+  };
+
+  const executeDelete = async () => {
+    if (!deletingId) return;
+    try {
+      await deleteNote(deletingId);
+      setThoughts((prev) => prev.filter((t) => t.id !== deletingId));
+      setDeletingId(null);
+      setEditingItem(null);
+    } catch (err) {
+      Alert.alert('Error', err instanceof Error ? err.message : 'Failed to delete thought');
+    }
+  };
+
   // Filter list by Tab category
   const filtered = thoughts.filter((note) => {
     if (activeTab === 'all') return true;
@@ -211,17 +391,51 @@ export default function ThoughtsScreen() {
       )
     : filtered;
 
+  // Sort pinned to top, then by creation date
+  const sortedAndDisplayed = [...displayed].sort((a, b) => {
+    const aPinned = a.tags.some((t) => t.toLowerCase() === 'pinned' || t.toLowerCase() === 'pin');
+    const bPinned = b.tags.some((t) => t.toLowerCase() === 'pinned' || t.toLowerCase() === 'pin');
+
+    if (aPinned && !bPinned) return -1;
+    if (!aPinned && bPinned) return 1;
+
+    return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+  });
+
   const totalCount = thoughts.length;
   const pinnedCount = thoughts.filter((t) =>
     t.tags.some((tag) => tag.toLowerCase() === 'pinned' || tag.toLowerCase() === 'pin')
   ).length;
 
+  const togglePin = async (id: string) => {
+    const item = thoughts.find((t) => t.id === id);
+    if (!item) return;
+
+    const isPinned = item.tags.some((t) => t.toLowerCase() === 'pinned' || t.toLowerCase() === 'pin');
+    const newTags = isPinned
+      ? item.tags.filter((t) => t.toLowerCase() !== 'pinned' && t.toLowerCase() !== 'pin')
+      : [...item.tags, 'pinned'];
+
+    // Optimistically update
+    setThoughts((prev) => prev.map((t) => (t.id === id ? { ...t, tags: newTags } : t)));
+
+    try {
+      await updateNote(id, { tags: newTags });
+    } catch (err) {
+      // Revert if error
+      setThoughts((prev) => prev.map((t) => (t.id === id ? { ...t, tags: item.tags } : t)));
+      Alert.alert('Error', err instanceof Error ? err.message : 'Failed to update pin status');
+    }
+  };
+
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <FlatList
-        data={displayed}
+        data={sortedAndDisplayed}
         keyExtractor={(item) => item.id}
-        renderItem={({ item }) => <ThoughtCard item={item} />}
+        renderItem={({ item }) => (
+          <ThoughtCard item={item} onEdit={() => setEditingItem(item)} onTogglePin={() => togglePin(item.id)} />
+        )}
         contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
         refreshControl={
@@ -262,6 +476,20 @@ export default function ThoughtsScreen() {
             </View>
           )
         }
+      />
+
+      <EditNoteModal
+        item={editingItem}
+        visible={editingItem !== null}
+        onClose={() => setEditingItem(null)}
+        onSave={handleUpdate}
+        onDelete={(id) => setDeletingId(id)}
+      />
+
+      <ConfirmDeleteModal
+        visible={deletingId !== null}
+        onClose={() => setDeletingId(null)}
+        onConfirm={executeDelete}
       />
     </SafeAreaView>
   );
@@ -459,5 +687,163 @@ const styles = StyleSheet.create({
     color: '#A1A1AA',
     textAlign: 'center',
     maxWidth: 240,
+  },
+
+  // Modal bottom sheet
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'flex-end',
+  },
+  modalSheet: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: 20,
+    paddingBottom: 36,
+    paddingTop: 12,
+    gap: 8,
+  },
+  modalHandle: {
+    width: 36,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: '#D4D4D8',
+    alignSelf: 'center',
+    marginBottom: 8,
+  },
+  modalTitle: {
+    fontFamily: OmniFonts.heading,
+    fontSize: 18,
+    color: OmniColors.ink,
+    marginBottom: 4,
+  },
+  editLabel: {
+    fontFamily: OmniFonts.bodySemiBold,
+    fontSize: 11,
+    color: '#71717A',
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+  },
+  editInput: {
+    fontFamily: OmniFonts.body,
+    fontSize: 14,
+    borderWidth: 1,
+    borderColor: '#E4E4E7',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    backgroundColor: '#FAFAFA',
+    color: '#18181B',
+  },
+  editInputMultiline: {
+    minHeight: 80,
+    maxHeight: 160,
+    textAlignVertical: 'top',
+  },
+  editActions: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 8,
+  },
+  editCancelBtn: {
+    flex: 1,
+    height: 44,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: OmniColors.mist,
+    backgroundColor: '#fff',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  editCancelText: {
+    fontFamily: OmniFonts.bodySemiBold,
+    fontSize: 14,
+    color: '#52525B',
+  },
+  editSaveBtn: {
+    flex: 1,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: OmniColors.ink,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  editSaveText: {
+    fontFamily: OmniFonts.bodySemiBold,
+    fontSize: 14,
+    color: '#fff',
+  },
+
+  // Confirm delete modal
+  modalOverlayCenter: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+  },
+  confirmModalBox: {
+    width: '100%',
+    maxWidth: 320,
+    backgroundColor: '#fff',
+    borderRadius: 24,
+    padding: 24,
+    alignItems: 'center',
+  },
+  confirmIconBox: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: '#FEE2E2',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+  },
+  confirmTitle: {
+    fontFamily: OmniFonts.heading,
+    fontSize: 18,
+    color: OmniColors.ink,
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  confirmText: {
+    fontFamily: OmniFonts.body,
+    fontSize: 14,
+    color: '#52525B',
+    textAlign: 'center',
+    lineHeight: 20,
+    marginBottom: 24,
+  },
+  confirmActions: {
+    flexDirection: 'row',
+    gap: 12,
+    width: '100%',
+  },
+  confirmCancelBtn: {
+    flex: 1,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: OmniColors.paper,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  confirmCancelText: {
+    fontFamily: OmniFonts.bodySemiBold,
+    fontSize: 14,
+    color: '#52525B',
+  },
+  confirmDeleteBtn: {
+    flex: 1,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: '#EF4444',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  confirmDeleteText: {
+    fontFamily: OmniFonts.bodySemiBold,
+    fontSize: 14,
+    color: '#fff',
   },
 });

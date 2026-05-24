@@ -281,3 +281,25 @@ export async function listNotes(
 ): Promise<NoteListResponse> {
   return apiFetch<NoteListResponse>(`/notes?limit=${limit}&offset=${offset}`);
 }
+
+export type NoteUpdatePayload = {
+  title?: string | null;
+  content?: string;
+  tags?: string[];
+};
+
+export async function updateNote(
+  id: string,
+  payload: NoteUpdatePayload,
+): Promise<NoteItem> {
+  return apiFetch<NoteItem>(`/notes/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function deleteNote(id: string): Promise<void> {
+  await apiFetch<void>(`/notes/${id}`, {
+    method: 'DELETE',
+  });
+}
