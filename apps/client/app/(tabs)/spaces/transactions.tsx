@@ -4,8 +4,13 @@ import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
   Pressable,
+  RefreshControl,
   StyleSheet,
   Text,
   TextInput,
@@ -14,7 +19,13 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { OmniColors, OmniFonts, OmniGradient } from '@/constants/theme';
-import { listTransactions, type TransactionItem } from '@/api/client';
+import {
+  listTransactions,
+  updateTransaction,
+  deleteTransaction,
+  type TransactionItem,
+  type TransactionUpdatePayload,
+} from '@/api/client';
 
 // ── Types ───────────────────────────────────────────────────────────
 
@@ -138,13 +149,25 @@ function SearchBar({
   );
 }
 
-function TransactionCard({ item }: { item: TransactionItem }) {
+function TransactionCard({
+  item,
+  onEdit,
+}: {
+  item: TransactionItem;
+  onEdit: () => void;
+}) {
   const tags: string[] = [];
   if (item.category) tags.push(item.category);
   if (item.currency !== 'USD') tags.push(item.currency);
 
   return (
-    <View style={styles.txCard}>
+    <Pressable
+      onPress={onEdit}
+      style={({ pressed }) => [
+        styles.txCard,
+        pressed && { opacity: 0.6 }
+      ]}
+    >
       {/* Top row */}
       <View style={styles.txTop}>
         <View style={styles.txLeft}>
@@ -170,6 +193,7 @@ function TransactionCard({ item }: { item: TransactionItem }) {
           </View>
         </View>
       </View>
+
       {/* Footer */}
       <View style={styles.txFooter}>
         <View style={styles.txDateRow}>
@@ -177,7 +201,183 @@ function TransactionCard({ item }: { item: TransactionItem }) {
           <Text style={styles.txFooterText}>{formatDate(item.created_at)}</Text>
         </View>
       </View>
-    </View>
+    </Pressable>
+  );
+}
+
+// ── Edit Modal ──────────────────────────────────────────────────────
+
+function EditTransactionModal({
+  item,
+  visible,
+  onClose,
+  onSave,
+  onDelete,
+}: {
+  item: TransactionItem | null;
+  visible: boolean;
+  onClose: () => void;
+  onSave: (id: string, payload: TransactionUpdatePayload) => void;
+  onDelete: (id: string) => void;
+}) {
+  const [editFields, setEditFields] = useState({
+    type: 'expense' as 'income' | 'expense',
+    amount: 0,
+    description: '',
+    category: '',
+  });
+
+  useEffect(() => {
+    if (item) {
+      setEditFields({
+        type: item.type,
+        amount: item.amount,
+        description: item.description || '',
+        category: item.category || '',
+      });
+    }
+  }, [item]);
+
+  if (!item) return null;
+
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <Pressable style={styles.modalOverlay} onPress={onClose}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={{ width: '100%' }}
+        >
+          <Pressable style={styles.modalSheet} onPress={() => {}}>
+            {/* Drag handle */}
+            <View style={styles.modalHandle} />
+
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+              <Text style={[styles.modalTitle, { marginBottom: 0 }]}>Edit Transaction</Text>
+              <Pressable onPress={() => onDelete(item.id)}>
+                <MaterialIcons name="delete-outline" size={24} color="#EF4444" />
+              </Pressable>
+            </View>
+
+            {/* Amount display */}
+            <View style={styles.modalAmountRow}>
+              <Text style={[
+                styles.modalAmountText,
+                editFields.type === 'income' ? { color: '#047857' } : { color: OmniColors.ink },
+              ]}>
+                {editFields.type === 'expense' ? '-' : '+'}${(editFields.amount || 0).toFixed(2)}
+              </Text>
+            </View>
+
+            {/* Type toggle */}
+            <Text style={styles.editLabel}>Type</Text>
+            <View style={styles.typeToggleRow}>
+              <Pressable
+                style={[styles.typeToggleBtn, editFields.type === 'expense' && styles.typeToggleBtnActive]}
+                onPress={() => setEditFields({ ...editFields, type: 'expense' })}
+              >
+                <Text style={[styles.typeToggleText, editFields.type === 'expense' && styles.typeToggleTextActive]}>
+                  Expense
+                </Text>
+              </Pressable>
+              <Pressable
+                style={[styles.typeToggleBtn, editFields.type === 'income' && styles.typeToggleBtnActive]}
+                onPress={() => setEditFields({ ...editFields, type: 'income' })}
+              >
+                <Text style={[styles.typeToggleText, editFields.type === 'income' && styles.typeToggleTextActive]}>
+                  Income
+                </Text>
+              </Pressable>
+            </View>
+
+            {/* Fields */}
+            <Text style={styles.editLabel}>Amount ($)</Text>
+            <TextInput
+              style={styles.editInput}
+              keyboardType="numeric"
+              value={String(editFields.amount || '')}
+              onChangeText={(val) => {
+                const amt = parseFloat(val);
+                setEditFields({ ...editFields, amount: isNaN(amt) ? 0 : amt });
+              }}
+            />
+
+            <Text style={styles.editLabel}>Description</Text>
+            <TextInput
+              style={styles.editInput}
+              value={editFields.description}
+              placeholder="What was this for?"
+              placeholderTextColor="#A1A1AA"
+              onChangeText={(val) => setEditFields({ ...editFields, description: val })}
+            />
+
+            <Text style={styles.editLabel}>Category</Text>
+            <TextInput
+              style={styles.editInput}
+              value={editFields.category}
+              placeholder="e.g. Food, Transport"
+              placeholderTextColor="#A1A1AA"
+              onChangeText={(val) => setEditFields({ ...editFields, category: val })}
+            />
+
+            {/* Actions */}
+            <View style={styles.editActions}>
+              <Pressable style={styles.editCancelBtn} onPress={onClose}>
+                <Text style={styles.editCancelText}>Cancel</Text>
+              </Pressable>
+              <Pressable
+                style={styles.editSaveBtn}
+                onPress={() =>
+                  onSave(item.id, {
+                    type: editFields.type,
+                    amount: editFields.amount,
+                    description: editFields.description || null,
+                    category: editFields.category || null,
+                  })
+                }
+              >
+                <Text style={styles.editSaveText}>Save</Text>
+              </Pressable>
+            </View>
+          </Pressable>
+        </KeyboardAvoidingView>
+      </Pressable>
+    </Modal>
+  );
+}
+
+// ── Confirm Delete Modal ────────────────────────────────────────────
+
+function ConfirmDeleteModal({
+  visible,
+  onClose,
+  onConfirm,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <Pressable style={styles.modalOverlayCenter} onPress={onClose}>
+        <Pressable style={styles.confirmModalBox} onPress={() => {}}>
+          <View style={styles.confirmIconBox}>
+            <MaterialIcons name="delete-outline" size={24} color="#EF4444" />
+          </View>
+          <Text style={styles.confirmTitle}>Delete Transaction?</Text>
+          <Text style={styles.confirmText}>
+            Are you sure you want to delete this transaction? This action cannot be undone.
+          </Text>
+          <View style={styles.confirmActions}>
+            <Pressable style={styles.confirmCancelBtn} onPress={onClose}>
+              <Text style={styles.confirmCancelText}>Cancel</Text>
+            </Pressable>
+            <Pressable style={styles.confirmDeleteBtn} onPress={onConfirm}>
+              <Text style={styles.confirmDeleteText}>Delete</Text>
+            </Pressable>
+          </View>
+        </Pressable>
+      </Pressable>
+    </Modal>
   );
 }
 
@@ -189,11 +389,18 @@ export default function TransactionsScreen() {
   const [search, setSearch] = useState('');
   const [transactions, setTransactions] = useState<TransactionItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [editingItem, setEditingItem] = useState<TransactionItem | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
-  const fetchTransactions = useCallback(async () => {
+  const fetchTransactions = useCallback(async (isRefresh = false) => {
     try {
-      setLoading(true);
+      if (isRefresh) {
+        setRefreshing(true);
+      } else {
+        setLoading(true);
+      }
       setError(null);
       const data = await listTransactions();
       setTransactions(data.items);
@@ -201,12 +408,37 @@ export default function TransactionsScreen() {
       setError(err instanceof Error ? err.message : 'Failed to load transactions');
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   }, []);
 
   useEffect(() => {
     fetchTransactions();
   }, [fetchTransactions]);
+
+  const handleUpdate = async (id: string, payload: TransactionUpdatePayload) => {
+    try {
+      const updated = await updateTransaction(id, payload);
+      setTransactions((prev) =>
+        prev.map((tx) => (tx.id === id ? updated : tx)),
+      );
+      setEditingItem(null);
+    } catch (err) {
+      Alert.alert('Error', err instanceof Error ? err.message : 'Failed to update transaction');
+    }
+  };
+
+  const executeDelete = async () => {
+    if (!deletingId) return;
+    try {
+      await deleteTransaction(deletingId);
+      setTransactions((prev) => prev.filter((tx) => tx.id !== deletingId));
+      setDeletingId(null);
+      setEditingItem(null); // Close edit modal as well
+    } catch (err) {
+      Alert.alert('Error', err instanceof Error ? err.message : 'Failed to delete transaction');
+    }
+  };
 
   // Filter by tab
   const filtered = transactions.filter((tx) => {
@@ -237,9 +469,17 @@ export default function TransactionsScreen() {
       <FlatList
         data={displayed}
         keyExtractor={(item) => item.id}
-        renderItem={({ item }) => <TransactionCard item={item} />}
+        renderItem={({ item }) => (
+          <TransactionCard
+            item={item}
+            onEdit={() => setEditingItem(item)}
+          />
+        )}
         contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={() => fetchTransactions(true)} tintColor={OmniColors.ink} />
+        }
         ListHeaderComponent={
           <View style={styles.header}>
             {/* Back */}
@@ -269,7 +509,7 @@ export default function TransactionsScreen() {
           ) : error ? (
             <View style={styles.emptyState}>
               <Text style={styles.emptyText}>{error}</Text>
-              <Pressable onPress={fetchTransactions}>
+              <Pressable onPress={() => fetchTransactions()}>
                 <Text style={styles.retryText}>Tap to retry</Text>
               </Pressable>
             </View>
@@ -280,6 +520,20 @@ export default function TransactionsScreen() {
             </View>
           )
         }
+      />
+
+      <EditTransactionModal
+        item={editingItem}
+        visible={editingItem !== null}
+        onClose={() => setEditingItem(null)}
+        onSave={handleUpdate}
+        onDelete={(id) => setDeletingId(id)}
+      />
+
+      <ConfirmDeleteModal
+        visible={deletingId !== null}
+        onClose={() => setDeletingId(null)}
+        onConfirm={executeDelete}
       />
     </SafeAreaView>
   );
@@ -512,5 +766,210 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: OmniColors.ink,
     marginTop: 4,
+  },
+
+  // Card action buttons
+  cardActionBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: OmniColors.mist,
+    backgroundColor: OmniColors.paper,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cardActionBtnDanger: {
+    borderColor: '#FECDD3',
+    backgroundColor: '#FFF1F2',
+  },
+
+  // Modal bottom sheet
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'flex-end',
+  },
+  modalSheet: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: 20,
+    paddingBottom: 36,
+    paddingTop: 12,
+    gap: 8,
+  },
+  modalHandle: {
+    width: 36,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: '#D4D4D8',
+    alignSelf: 'center',
+    marginBottom: 8,
+  },
+  modalTitle: {
+    fontFamily: OmniFonts.heading,
+    fontSize: 18,
+    color: OmniColors.ink,
+    marginBottom: 4,
+  },
+  modalAmountRow: {
+    alignItems: 'center',
+    paddingVertical: 8,
+    marginBottom: 4,
+  },
+  modalAmountText: {
+    fontFamily: OmniFonts.data,
+    fontSize: 32,
+    color: OmniColors.ink,
+  },
+  editLabel: {
+    fontFamily: OmniFonts.bodySemiBold,
+    fontSize: 11,
+    color: '#71717A',
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+  },
+  editInput: {
+    fontFamily: OmniFonts.body,
+    fontSize: 14,
+    borderWidth: 1,
+    borderColor: '#E4E4E7',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    backgroundColor: '#FAFAFA',
+    color: '#18181B',
+  },
+  typeToggleRow: {
+    flexDirection: 'row',
+    gap: 6,
+  },
+  typeToggleBtn: {
+    flex: 1,
+    height: 40,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#E4E4E7',
+    backgroundColor: '#FAFAFA',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  typeToggleBtnActive: {
+    backgroundColor: OmniColors.ink,
+    borderColor: OmniColors.ink,
+  },
+  typeToggleText: {
+    fontFamily: OmniFonts.bodySemiBold,
+    fontSize: 13,
+    color: '#71717A',
+  },
+  typeToggleTextActive: {
+    color: '#fff',
+  },
+  editActions: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 8,
+  },
+  editCancelBtn: {
+    flex: 1,
+    height: 44,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: OmniColors.mist,
+    backgroundColor: '#fff',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  editCancelText: {
+    fontFamily: OmniFonts.bodySemiBold,
+    fontSize: 14,
+    color: '#52525B',
+  },
+  editSaveBtn: {
+    flex: 1,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: OmniColors.ink,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  editSaveText: {
+    fontFamily: OmniFonts.bodySemiBold,
+    fontSize: 14,
+    color: '#fff',
+  },
+
+  // Confirm delete modal
+  modalOverlayCenter: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+  },
+  confirmModalBox: {
+    width: '100%',
+    maxWidth: 320,
+    backgroundColor: '#fff',
+    borderRadius: 24,
+    padding: 24,
+    alignItems: 'center',
+  },
+  confirmIconBox: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: '#FEE2E2',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+  },
+  confirmTitle: {
+    fontFamily: OmniFonts.heading,
+    fontSize: 18,
+    color: OmniColors.ink,
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  confirmText: {
+    fontFamily: OmniFonts.body,
+    fontSize: 14,
+    color: '#52525B',
+    textAlign: 'center',
+    lineHeight: 20,
+    marginBottom: 24,
+  },
+  confirmActions: {
+    flexDirection: 'row',
+    gap: 12,
+    width: '100%',
+  },
+  confirmCancelBtn: {
+    flex: 1,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: OmniColors.paper,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  confirmCancelText: {
+    fontFamily: OmniFonts.bodySemiBold,
+    fontSize: 14,
+    color: '#52525B',
+  },
+  confirmDeleteBtn: {
+    flex: 1,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: '#EF4444',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  confirmDeleteText: {
+    fontFamily: OmniFonts.bodySemiBold,
+    fontSize: 14,
+    color: '#fff',
   },
 });

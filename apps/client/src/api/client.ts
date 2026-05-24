@@ -92,6 +92,10 @@ async function apiFetch<T>(
     throw new Error(`API ${res.status}: ${body}`);
   }
 
+  if (res.status === 204 || res.headers.get('content-length') === '0') {
+    return undefined as T;
+  }
+
   return res.json() as Promise<T>;
 }
 
@@ -167,6 +171,31 @@ export async function listTransactions(
   return apiFetch<TransactionListResponse>(
     `/transactions?limit=${limit}&offset=${offset}`,
   );
+}
+
+export type TransactionUpdatePayload = {
+  type?: 'income' | 'expense';
+  amount?: number;
+  currency?: string;
+  category?: string | null;
+  description?: string | null;
+  date?: string;
+};
+
+export async function updateTransaction(
+  id: string,
+  payload: TransactionUpdatePayload,
+): Promise<TransactionItem> {
+  return apiFetch<TransactionItem>(`/transactions/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function deleteTransaction(id: string): Promise<void> {
+  await apiFetch<void>(`/transactions/${id}`, {
+    method: 'DELETE',
+  });
 }
 
 // ── To-Dos ──────────────────────────────────────────────────────────
