@@ -124,6 +124,32 @@ def add_message(
     return assistant_message
 
 
+def append_message(
+    db_session: Session,
+    user_id: str,
+    conversation_id: str,
+    role: str,
+    content: str,
+) -> Message | None:
+    """Store a single message verbatim — no orchestrator / LLM call."""
+    conversation = get_conversation(db_session, user_id, conversation_id)
+    if conversation is None:
+        return None
+
+    message = Message(
+        conversation_id=conversation_id,
+        user_id=user_id,
+        role=role,
+        content=content,
+    )
+    db_session.add(message)
+    conversation.updated_at = func.now()
+
+    db_session.commit()
+    db_session.refresh(message)
+    return message
+
+
 def list_conversations(
     db_session: Session,
     user_id: str,

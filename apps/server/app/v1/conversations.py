@@ -15,6 +15,7 @@ from app.v1.schemas import (
     ConversationListResponse,
     ConversationMessagesResponse,
     ConversationResponse,
+    MessageAppendRequest,
     MessageCreateRequest,
     MessageResponse,
 )
@@ -139,6 +140,32 @@ def create_message(
     except Exception as error:
         raise _handle_orchestrator_error(error) from error
 
+    if message is None:
+        raise _NOT_FOUND
+    return MessageResponse.model_validate(message)
+
+
+@router.post(
+    "/{conversation_id}/messages/append",
+    response_model=MessageResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Append a message to a conversation without generating a reply",
+)
+def append_message(
+    conversation_id: str,
+    payload: MessageAppendRequest,
+    authenticated_user: Annotated[
+        AuthenticatedUser, Depends(get_current_authenticated_user)
+    ],
+    db_session: Annotated[Session, Depends(get_db_session)],
+) -> MessageResponse:
+    message = service.append_message(
+        db_session,
+        authenticated_user.user.id,
+        conversation_id,
+        payload.role,
+        payload.content,
+    )
     if message is None:
         raise _NOT_FOUND
     return MessageResponse.model_validate(message)

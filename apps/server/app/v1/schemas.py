@@ -56,6 +56,19 @@ class MessageCreateRequest(BaseModel):
         return _validate_prompt(value)
 
 
+class MessageAppendRequest(BaseModel):
+    role: Literal["user", "assistant"]
+    content: str = Field(..., min_length=1, max_length=10_000)
+
+    @field_validator("content")
+    @classmethod
+    def validate_content(cls, value: str) -> str:
+        cleaned_value = value.strip()
+        if not cleaned_value:
+            raise ValueError("content must not be empty")
+        return cleaned_value
+
+
 class ConversationResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

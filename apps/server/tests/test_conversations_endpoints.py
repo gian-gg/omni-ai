@@ -239,6 +239,55 @@ class ConversationsEndpointsTestCase(unittest.TestCase):
             404,
         )
 
+    def _create_conversation(self, prompt: str = "hello") -> str:
+        with patch(
+            "app.services.conversations.run_orchestrator",
+            return_value=_result(),
+        ):
+            return self.client.post(
+                "/api/v1/conversations", json={"prompt": prompt}
+            ).json()["conversation"]["id"]
+
+    def test_append_message_stores_without_generating_reply(self) -> None:
+        conversation_id = self._create_conversation()
+
+        with patch("app.services.conversations.run_orchestrator") as run_mock:
+            response = self.client.post(
+                f"/api/v1/conversations/{conversation_id}/messages/append",
+                json={"role": "assistant", "content": "manually inserted"},
+            )
+
+        self.assertEqual(response.status_code, 201)
+        body = response.json()
+        self.assertEqual(body["role"], "assistant")
+        self.assertEqual(body["content"], "manually inserted")
+        self.assertIsNone(body["details"])
+        run_mock.assert_not_called()
+
+        messages = self.client.get(
+            f"/api/v1/conversations/{conversation_id}/messages"
+        ).json()["items"]
+        self.assertEqual(messages[-1]["content"], "manually inserted")
+
+    def test_append_message_is_404_for_other_users_conversation(self) -> None:
+        self._act_as("other-user-456")
+        conversation_id = self._create_conversation("theirs")
+
+        self._act_as("local-user-123")
+        response = self.client.post(
+            f"/api/v1/conversations/{conversation_id}/messages/append",
+            json={"role": "user", "content": "hi"},
+        )
+        self.assertEqual(response.status_code, 404)
+
+    def test_append_message_rejects_invalid_role(self) -> None:
+        conversation_id = self._create_conversation()
+        response = self.client.post(
+            f"/api/v1/conversations/{conversation_id}/messages/append",
+            json={"role": "system", "content": "nope"},
+        )
+        self.assertEqual(response.status_code, 422)
+
     def test_delete_conversation(self) -> None:
         with patch(
             "app.services.conversations.run_orchestrator",
