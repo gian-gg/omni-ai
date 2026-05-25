@@ -1,13 +1,11 @@
 from __future__ import annotations
 
+from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
-from langgraph.graph import END, START, StateGraph
-
 from app.graph.nodes import (
-    chat_reply_node,
     classify_node,
     extract_finance_node,
     extract_note_node,
@@ -15,43 +13,9 @@ from app.graph.nodes import (
     query_node,
     retrieve_node,
     route_by_intent,
+    stream_chat_reply,
 )
 from app.graph.state import IntentType, OrchestratorState
-
-
-def build_orchestrator():
-    graph_builder: StateGraph[OrchestratorState] = StateGraph(OrchestratorState)
-
-    graph_builder.add_node("classify", classify_node)
-    graph_builder.add_node("retrieve", retrieve_node)
-    graph_builder.add_node("query", query_node)
-    graph_builder.add_node("chat_reply", chat_reply_node)
-    graph_builder.add_node("extract_finance", extract_finance_node)
-    graph_builder.add_node("extract_todo", extract_todo_node)
-    graph_builder.add_node("extract_note", extract_note_node)
-
-    graph_builder.add_edge(START, "classify")
-    graph_builder.add_edge("classify", "retrieve")
-    graph_builder.add_edge("retrieve", "query")
-    graph_builder.add_conditional_edges(
-        "query",
-        route_by_intent,
-        {
-            "chat_reply": "chat_reply",
-            "extract_finance": "extract_finance",
-            "extract_todo": "extract_todo",
-            "extract_note": "extract_note",
-        },
-    )
-    graph_builder.add_edge("chat_reply", END)
-    graph_builder.add_edge("extract_finance", END)
-    graph_builder.add_edge("extract_todo", END)
-    graph_builder.add_edge("extract_note", END)
-
-    return graph_builder.compile()
-
-
-orchestrator_graph = build_orchestrator()
 
 # Number of trailing conversation messages forwarded to the LLM. Bounds token
 # growth while keeping enough context for multi-turn follow-ups (~5 exchanges).
@@ -93,20 +57,46 @@ class OrchestratorResult:
     tool_calls: list[dict[str, Any]]
 
 
-def run_orchestrator(
-    user_input: str,
-    user_id: str | None = None,
-    history: list[dict[str, Any]] | None = None,
-    currency: str | None = None,
-) -> OrchestratorResult:
-    clean_input = user_input.strip()
-    if not clean_input:
-        raise ValueError("user_input must not be empty")
+# ----- Streaming --------------------------------------------------------------
 
-    initial_state: OrchestratorState = {
+
+@dataclass(frozen=True)
+class StreamTextDelta:
+    """An incremental chunk of the assistant's reply text."""
+
+    text: str
+
+
+@dataclass(frozen=True)
+class StreamDone:
+    """Terminal stream event carrying the fully-assembled result."""
+
+    result: OrchestratorResult
+
+
+StreamEvent = StreamTextDelta | StreamDone
+
+
+def _extract_node(branch: str):
+    # Resolved at call time (not frozen in a module-level dict) so the node
+    # functions stay patchable in tests.
+    return {
+        "extract_finance": extract_finance_node,
+        "extract_todo": extract_todo_node,
+        "extract_note": extract_note_node,
+    }[branch]
+
+
+def _initial_state(
+    user_input: str,
+    user_id: str | None,
+    history: list[dict[str, Any]] | None,
+    currency: str | None,
+) -> OrchestratorState:
+    return {
         "user_id": user_id,
         "currency": currency,
-        "user_input": clean_input,
+        "user_input": user_input,
         "history": _normalize_history(history),
         "intent": "chat",
         "response": "",
@@ -119,20 +109,73 @@ def run_orchestrator(
         "used_source_ids": [],
         "tool_calls": [],
     }
-    final_state = orchestrator_graph.invoke(initial_state)
 
-    retrieved_sources = list(final_state.get("sources") or [])
-    used_ids = set(final_state.get("used_source_ids") or [])
+
+def stream_orchestrator(
+    user_input: str,
+    user_id: str | None = None,
+    history: list[dict[str, Any]] | None = None,
+    currency: str | None = None,
+) -> Iterator[StreamEvent]:
+    """Run the orchestrator and stream the reply.
+
+    Runs the classify → retrieve → query pipeline, then either streams a chat
+    reply token-by-token (yielding `StreamTextDelta`s) or, for a capture intent,
+    runs the matching extractor with no deltas. Always finishes with exactly one
+    `StreamDone` carrying the assembled `OrchestratorResult`.
+    """
+    clean_input = user_input.strip()
+    if not clean_input:
+        raise ValueError("user_input must not be empty")
+
+    state = _initial_state(clean_input, user_id, history, currency)
+
+    tokens = 0
+    for node in (classify_node, retrieve_node, query_node):
+        update = node(state)
+        tokens += int(update.pop("tokens", 0) or 0)
+        state.update(update)
+
+    branch = route_by_intent(state)
+
+    if branch != "chat_reply":
+        update = _extract_node(branch)(state)
+        tokens += int(update.pop("tokens", 0) or 0)
+        state.update(update)
+        yield StreamDone(result=_finalize(state, tokens))
+        return
+
+    # Chat: stream prose deltas. Streaming uses plain text, so every retrieved
+    # note is treated as a candidate source (no LLM-filtered used_source_ids).
+    chunks: list[str] = []
+    for event in stream_chat_reply(state):
+        if event.delta:
+            chunks.append(event.delta)
+            yield StreamTextDelta(text=event.delta)
+        if event.done:
+            tokens += event.tokens
+
+    reply = "".join(chunks).strip() or f"(LLM unavailable) You said: {clean_input}"
+    state["response"] = reply
+    state["used_source_ids"] = [
+        s["id"] for s in state.get("sources") or [] if s.get("id")
+    ]
+    yield StreamDone(result=_finalize(state, tokens))
+
+
+def _finalize(state: OrchestratorState, tokens: int) -> OrchestratorResult:
+    retrieved_sources = list(state.get("sources") or [])
+    used_ids = set(state.get("used_source_ids") or [])
     filtered_sources = [s for s in retrieved_sources if s.get("id") in used_ids]
 
     return OrchestratorResult(
-        intent=final_state["intent"],
-        response=final_state["response"],
-        complete_response=final_state.get("complete_response"),
-        cancelled_response=final_state.get("cancelled_response"),
-        data=final_state.get("data"),
-        tokens=int(final_state.get("tokens", 0)),
+        intent=state["intent"],
+        response=state["response"],
+        complete_response=state.get("complete_response"),
+        cancelled_response=state.get("cancelled_response"),
+        data=state.get("data"),
+        tokens=tokens,
         datetime=datetime.now(UTC),
         sources=filtered_sources,
-        tool_calls=list(final_state.get("tool_calls") or []),
+        tool_calls=list(state.get("tool_calls") or []),
     )

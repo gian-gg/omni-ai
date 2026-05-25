@@ -88,11 +88,6 @@ class MessageResponse(BaseModel):
     created_at: datetime
 
 
-class ConversationCreateResponse(BaseModel):
-    conversation: ConversationResponse
-    message: MessageResponse
-
-
 class ConversationListResponse(BaseModel):
     items: list[ConversationResponse]
     total: int

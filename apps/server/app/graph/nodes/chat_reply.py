@@ -1,9 +1,15 @@
 from __future__ import annotations
 
+from collections.abc import Iterator
 from typing import Any
 
 from app.graph.nodes._currency_context import format_currency_context
-from app.graph.nodes._llm_client import call_llm, parse_json_object
+from app.graph.nodes._llm_client import (
+    LLMStreamEvent,
+    call_llm,
+    parse_json_object,
+    stream_llm,
+)
 from app.graph.nodes._notes_context import format_notes_context
 from app.graph.nodes._tool_context import format_tool_context
 from app.graph.state import OrchestratorState
@@ -17,6 +23,37 @@ CHAT_WITH_CONTEXT_PROMPT = (
     '{ "response": "your reply in plain text", '
     '"used_source_ids": ["id of each note you actually used"] }'
 )
+
+# Streaming always yields plain prose, so the JSON used_source_ids channel isn't
+# available; this instructs the model to weave in the supplied context directly.
+CHAT_STREAM_CONTEXT_PROMPT = (
+    "You are Omni, a helpful, concise assistant. Use the context above when it "
+    "is relevant. Reply in plain text."
+)
+
+
+def build_chat_stream_prompt(state: OrchestratorState) -> str:
+    """System prompt for the streaming (plain-text) chat reply path."""
+    currency_block = format_currency_context(state.get("currency"))
+    notes_block = format_notes_context(state.get("notes_context"))
+    tools_block = format_tool_context(state.get("tool_calls"))
+    context_block = "".join(b for b in (notes_block, tools_block) if b)
+    if not context_block:
+        return f"{currency_block}{CHAT_SYSTEM_PROMPT}"
+    return f"{currency_block}{context_block}\n{CHAT_STREAM_CONTEXT_PROMPT}"
+
+
+def stream_chat_reply(state: OrchestratorState) -> Iterator[LLMStreamEvent]:
+    """Stream the chat reply token-by-token (plain text only).
+
+    Yields the underlying LLM stream events; the caller accumulates text and
+    reads the total token count off the terminal event.
+    """
+    yield from stream_llm(
+        build_chat_stream_prompt(state),
+        state["user_input"],
+        history=state.get("history"),
+    )
 
 
 def chat_reply_node(state: OrchestratorState) -> dict[str, Any]:

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from typing import Any, TypeGuard
 
@@ -178,6 +179,102 @@ def call_llm(
         tokens=_extract_tokens(response_data),
         tool_calls=_extract_tool_calls(response_data),
     )
+
+
+@dataclass(frozen=True)
+class LLMStreamEvent:
+    """One step of a streamed completion.
+
+    `delta` carries incremental text (empty on the terminal event). `done` marks
+    the final event, at which point `tokens` holds the total usage if the
+    provider reported it.
+    """
+
+    delta: str = ""
+    tokens: int = 0
+    done: bool = False
+
+
+def _stream_delta(payload: object) -> str | None:
+    """Pull the incremental content out of one streamed chunk."""
+    if not _is_string_key_dict(payload):
+        return None
+    choices = payload.get("choices")
+    if not isinstance(choices, list) or not choices:
+        return None
+    first = choices[0]
+    if not _is_string_key_dict(first):
+        return None
+    delta = first.get("delta")
+    if not _is_string_key_dict(delta):
+        return None
+    content = delta.get("content")
+    return content if isinstance(content, str) else None
+
+
+def stream_llm(
+    system_prompt: str,
+    user_input: str,
+    *,
+    temperature: float = 0.2,
+    history: list[dict[str, str]] | None = None,
+) -> Iterator[LLMStreamEvent]:
+    """Stream a plain-text completion token-by-token.
+
+    Yields zero or more text-bearing events followed by exactly one terminal
+    `done` event (carrying total tokens when the provider reports usage). On a
+    missing key or transport error, yields only the terminal event so callers can
+    fall back to a static reply.
+    """
+    api_key = settings.llm_api_key
+    if not api_key:
+        logger.warning("LLM_API_KEY is not configured.")
+        yield LLMStreamEvent(done=True)
+        return
+
+    url = f"{settings.llm_base_url.rstrip('/')}/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+    }
+    payload: dict[str, object] = {
+        "model": settings.llm_model,
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            *_history_messages(history),
+            {"role": "user", "content": user_input},
+        ],
+        "temperature": temperature,
+        "stream": True,
+        "stream_options": {"include_usage": True},
+    }
+
+    total_tokens = 0
+    try:
+        with httpx.Client(timeout=60) as client:
+            with client.stream("POST", url, headers=headers, json=payload) as response:
+                response.raise_for_status()
+                for line in response.iter_lines():
+                    if not line or not line.startswith("data:"):
+                        continue
+                    data = line[len("data:") :].strip()
+                    if not data or data == "[DONE]":
+                        continue
+                    try:
+                        chunk = json.loads(data)
+                    except json.JSONDecodeError:
+                        logger.warning("Skipping non-JSON stream chunk: %r", data)
+                        continue
+                    tokens = _extract_tokens(chunk)
+                    if tokens:
+                        total_tokens = tokens
+                    delta = _stream_delta(chunk)
+                    if delta:
+                        yield LLMStreamEvent(delta=delta)
+    except httpx.HTTPError:
+        logger.exception("Streaming LLM request failed.")
+
+    yield LLMStreamEvent(tokens=total_tokens, done=True)
 
 
 def parse_json_object(raw: str) -> dict[str, Any] | None:
