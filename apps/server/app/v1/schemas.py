@@ -10,7 +10,6 @@ IntentType = Literal["finance", "todo", "note", "chat"]
 class FinanceData(BaseModel):
     type: Literal["income", "expense"]
     amount: float
-    currency: str = "USD"
     category: str | None = None
     description: str | None = None
     date: _date | None = None
@@ -106,15 +105,46 @@ class ConversationMessagesResponse(BaseModel):
 
 
 class AuthenticatedUserResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: str
     supabase_user_id: str
     email: str | None
+    display_name: str | None = None
+    currency: str | None = None
     created_at: datetime
     updated_at: datetime
 
 
 class AuthMeResponse(BaseModel):
     user: AuthenticatedUserResponse
+
+
+class UserPreferencesUpdateRequest(BaseModel):
+    display_name: str | None = None
+    currency: str | None = None
+
+    @field_validator("display_name")
+    @classmethod
+    def validate_display_name(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        cleaned = value.strip()
+        if not cleaned:
+            raise ValueError("display_name must not be empty")
+        if len(cleaned) > 120:
+            raise ValueError("display_name must be at most 120 characters")
+        return cleaned
+
+    @field_validator("currency")
+    @classmethod
+    def validate_currency(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        cleaned = value.strip().upper()
+        if len(cleaned) != 3 or not cleaned.isalpha():
+            raise ValueError("currency must be a 3-letter ISO 4217 code")
+        return cleaned
 
 
 class AuthPasswordRequest(BaseModel):
@@ -171,7 +201,6 @@ class TransactionResponse(BaseModel):
     id: str
     type: Literal["income", "expense"]
     amount: float
-    currency: str
     category: str | None
     description: str | None
     date: _date
@@ -182,7 +211,6 @@ class TransactionResponse(BaseModel):
 class TransactionUpdateRequest(BaseModel):
     type: Literal["income", "expense"] | None = None
     amount: float | None = None
-    currency: str | None = None
     category: str | None = None
     description: str | None = None
     date: _date | None = None

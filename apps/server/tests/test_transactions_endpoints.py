@@ -96,7 +96,6 @@ class TransactionsEndpointsTestCase(unittest.TestCase):
         base: dict[str, Any] = {
             "type": "expense",
             "amount": 12.50,
-            "currency": "USD",
             "category": "food",
             "description": "coffee",
             "date": "2026-05-23",
@@ -111,6 +110,11 @@ class TransactionsEndpointsTestCase(unittest.TestCase):
         self.assertTrue(body["id"])
         self.assertEqual(body["amount"], 12.50)
         self.assertEqual(body["date"], "2026-05-23")
+
+    def test_response_has_no_currency_field(self) -> None:
+        response = self.client.post("/api/v1/transactions", json=self._payload())
+        self.assertEqual(response.status_code, 201)
+        self.assertNotIn("currency", response.json())
 
     def test_list_returns_only_callers_transactions(self) -> None:
         # Caller transaction.

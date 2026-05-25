@@ -18,7 +18,6 @@ def create_transaction(
         user_id=user_id,
         type=payload.type,
         amount=payload.amount,
-        currency=payload.currency,
         category=payload.category,
         description=payload.description,
         date=payload.date or _date.today(),

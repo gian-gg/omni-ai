@@ -5,20 +5,24 @@ from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import RedirectResponse
+from sqlalchemy.orm import Session
 
 from app.core.auth import AuthenticatedUser, get_current_authenticated_user
 from app.core.config import settings
+from app.db.session import get_db_session
 from app.services.supabase_auth import (
     refresh_session,
     sign_in_with_password,
     sign_up_with_password,
 )
+from app.services.user import update_user_preferences
 from app.v1.schemas import (
     AuthMeResponse,
     AuthPasswordRequest,
     AuthRefreshRequest,
     AuthSessionResponse,
     AuthenticatedUserResponse,
+    UserPreferencesUpdateRequest,
 )
 
 router = APIRouter(prefix="/auth")
@@ -64,13 +68,20 @@ def get_me(
         AuthenticatedUser, Depends(get_current_authenticated_user)
     ],
 ) -> AuthMeResponse:
-    user = authenticated_user.user
     return AuthMeResponse(
-        user=AuthenticatedUserResponse(
-            id=user.id,
-            supabase_user_id=user.supabase_user_id,
-            email=user.email,
-            created_at=user.created_at,
-            updated_at=user.updated_at,
-        )
+        user=AuthenticatedUserResponse.model_validate(authenticated_user.user)
     )
+
+
+@router.patch(
+    "/me", response_model=AuthMeResponse, summary="Update the authenticated user's preferences"
+)
+def update_me(
+    payload: UserPreferencesUpdateRequest,
+    authenticated_user: Annotated[
+        AuthenticatedUser, Depends(get_current_authenticated_user)
+    ],
+    db_session: Annotated[Session, Depends(get_db_session)],
+) -> AuthMeResponse:
+    user = update_user_preferences(db_session, authenticated_user.user, payload)
+    return AuthMeResponse(user=AuthenticatedUserResponse.model_validate(user))

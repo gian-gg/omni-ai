@@ -97,7 +97,7 @@ class ExtractorTests(unittest.TestCase):
                 "response": "Ooh interesting! Add to transactions?",
                 "complete_response": "Done — added.",
                 "cancelled_response": "No worries.",
-                "data": {"type": "expense", "amount": 5, "currency": "USD"},
+                "data": {"type": "expense", "amount": 5},
             }
         )
         with patch(
