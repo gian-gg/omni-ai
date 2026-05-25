@@ -18,10 +18,12 @@ def _state(
     intent: str = "chat",
     notes_context: list[dict] | None = None,
     tool_calls: list[dict] | None = None,
+    history: list[dict] | None = None,
 ) -> OrchestratorState:
     return {
         "user_id": None,
         "user_input": user_input,
+        "history": history or [],
         "intent": intent,  # type: ignore[typeddict-item]
         "response": "",
         "complete_response": None,
@@ -171,6 +173,18 @@ class ChatReplyTests(unittest.TestCase):
             },
         )
 
+    def test_forwards_conversation_history_to_llm(self) -> None:
+        history = [
+            {"role": "user", "content": "I spent $4 on coffee"},
+            {"role": "assistant", "content": "Logged it."},
+        ]
+        with patch(
+            "app.graph.nodes.chat_reply.call_llm",
+            return_value=_llm("Sure.", tokens=3),
+        ) as call_mock:
+            chat_reply_node(_state("was that a lot?", history=history))
+        self.assertEqual(call_mock.call_args.kwargs["history"], history)
+
     def test_falls_back_when_llm_unavailable(self) -> None:
         with patch("app.graph.nodes.chat_reply.call_llm", return_value=_llm(None)):
             result = chat_reply_node(_state("hello"))
@@ -226,3 +240,84 @@ class ChatReplyTests(unittest.TestCase):
         system_prompt = call_mock.call_args.args[0]
         self.assertIn("Pour-over recipe", system_prompt)
         self.assertIn("Relevant context", system_prompt)
+
+
+class CallLlmMessageAssemblyTests(unittest.TestCase):
+    def _capture_payload(
+        self, history: list[dict] | None
+    ) -> list[dict]:
+        from app.graph.nodes import _llm_client
+
+        captured: dict = {}
+
+        class _Resp:
+            def raise_for_status(self) -> None:
+                return None
+
+            def json(self) -> dict:
+                return {"choices": [{"message": {"content": "ok"}}]}
+
+        class _Client:
+            def __init__(self, *args, **kwargs) -> None:
+                pass
+
+            def __enter__(self) -> "_Client":
+                return self
+
+            def __exit__(self, *args) -> None:
+                return None
+
+            def post(self, url, headers=None, json=None):  # noqa: A002
+                captured["payload"] = json
+                return _Resp()
+
+        with (
+            patch.object(_llm_client.settings, "llm_api_key", "test-key"),
+            patch.object(_llm_client.httpx, "Client", _Client),
+        ):
+            _llm_client.call_llm("system", "current", history=history)
+
+        return captured["payload"]["messages"]
+
+    def test_history_is_inserted_between_system_and_user(self) -> None:
+        history = [
+            {"role": "user", "content": "earlier question"},
+            {"role": "assistant", "content": "earlier answer"},
+        ]
+        messages = self._capture_payload(history)
+        self.assertEqual(
+            messages,
+            [
+                {"role": "system", "content": "system"},
+                {"role": "user", "content": "earlier question"},
+                {"role": "assistant", "content": "earlier answer"},
+                {"role": "user", "content": "current"},
+            ],
+        )
+
+    def test_malformed_history_entries_are_dropped(self) -> None:
+        history = [
+            {"role": "user", "content": "valid"},
+            {"role": "system", "content": "bad role"},
+            {"role": "assistant", "content": 123},
+            "not a dict",
+        ]
+        messages = self._capture_payload(history)
+        self.assertEqual(
+            messages,
+            [
+                {"role": "system", "content": "system"},
+                {"role": "user", "content": "valid"},
+                {"role": "user", "content": "current"},
+            ],
+        )
+
+    def test_no_history_keeps_single_user_message(self) -> None:
+        messages = self._capture_payload(None)
+        self.assertEqual(
+            messages,
+            [
+                {"role": "system", "content": "system"},
+                {"role": "user", "content": "current"},
+            ],
+        )

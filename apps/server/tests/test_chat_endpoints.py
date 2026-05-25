@@ -93,5 +93,46 @@ class ChatEndpointsTestCase(unittest.TestCase):
                 ],
             },
         )
-        run_orchestrator_mock.assert_called_once_with("hello", user_id="local-user-123")
+        run_orchestrator_mock.assert_called_once_with(
+            "hello", user_id="local-user-123", history=[]
+        )
+
+    def test_chat_endpoint_forwards_conversation_history(self) -> None:
+        app.dependency_overrides[get_current_authenticated_user] = (
+            _build_authenticated_user
+        )
+
+        history = [
+            {"role": "user", "content": "I spent $4 on coffee"},
+            {"role": "assistant", "content": "Logged a $4 coffee expense."},
+            {"role": "user", "content": "and $3 on tea"},
+            {"role": "assistant", "content": "Logged a $3 tea expense."},
+        ]
+
+        with patch(
+            "app.v1.chat.run_orchestrator",
+            return_value=OrchestratorResult(
+                intent="chat",
+                response="That's $7 total.",
+                complete_response=None,
+                cancelled_response=None,
+                data=None,
+                tokens=10,
+                datetime=datetime(2026, 5, 23, 17, 0, tzinfo=UTC),
+                sources=[],
+                tool_calls=[],
+            ),
+        ) as run_orchestrator_mock:
+            client = TestClient(app)
+            response = client.post(
+                "/api/v1/chat",
+                json={"prompt": "how much did I spend?", "history": history},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        run_orchestrator_mock.assert_called_once_with(
+            "how much did I spend?",
+            user_id="local-user-123",
+            history=history,
+        )
 

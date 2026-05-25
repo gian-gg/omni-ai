@@ -53,6 +53,32 @@ def build_orchestrator():
 
 orchestrator_graph = build_orchestrator()
 
+# Number of trailing conversation messages forwarded to the LLM. Bounds token
+# growth while keeping enough context for multi-turn follow-ups (~5 exchanges).
+MAX_HISTORY_MESSAGES = 10
+
+_VALID_ROLES = frozenset({"user", "assistant"})
+
+
+def _normalize_history(
+    history: list[dict[str, Any]] | None,
+) -> list[dict[str, str]]:
+    if not history:
+        return []
+    cleaned: list[dict[str, str]] = []
+    for message in history:
+        if not isinstance(message, dict):
+            continue
+        role = message.get("role")
+        content = message.get("content")
+        if role not in _VALID_ROLES or not isinstance(content, str):
+            continue
+        stripped = content.strip()
+        if not stripped:
+            continue
+        cleaned.append({"role": role, "content": stripped})
+    return cleaned[-MAX_HISTORY_MESSAGES:]
+
 
 @dataclass(frozen=True)
 class OrchestratorResult:
@@ -67,7 +93,11 @@ class OrchestratorResult:
     tool_calls: list[dict[str, Any]]
 
 
-def run_orchestrator(user_input: str, user_id: str | None = None) -> OrchestratorResult:
+def run_orchestrator(
+    user_input: str,
+    user_id: str | None = None,
+    history: list[dict[str, Any]] | None = None,
+) -> OrchestratorResult:
     clean_input = user_input.strip()
     if not clean_input:
         raise ValueError("user_input must not be empty")
@@ -75,6 +105,7 @@ def run_orchestrator(user_input: str, user_id: str | None = None) -> Orchestrato
     initial_state: OrchestratorState = {
         "user_id": user_id,
         "user_input": clean_input,
+        "history": _normalize_history(history),
         "intent": "chat",
         "response": "",
         "complete_response": None,

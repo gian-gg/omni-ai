@@ -20,12 +20,13 @@ CHAT_WITH_CONTEXT_PROMPT = (
 
 def chat_reply_node(state: OrchestratorState) -> dict[str, Any]:
     user_input = state["user_input"]
+    history = state.get("history")
     notes_block = format_notes_context(state.get("notes_context"))
     tools_block = format_tool_context(state.get("tool_calls"))
     context_block = "".join(b for b in (notes_block, tools_block) if b)
 
     if not context_block:
-        result = call_llm(CHAT_SYSTEM_PROMPT, user_input)
+        result = call_llm(CHAT_SYSTEM_PROMPT, user_input, history=history)
         reply = result.content or f"(LLM unavailable) You said: {user_input}"
         return {
             "response": reply,
@@ -37,7 +38,7 @@ def chat_reply_node(state: OrchestratorState) -> dict[str, Any]:
         }
 
     system_prompt = f"{context_block}\n{CHAT_WITH_CONTEXT_PROMPT}"
-    result = call_llm(system_prompt, user_input, json_mode=True)
+    result = call_llm(system_prompt, user_input, json_mode=True, history=history)
 
     reply = f"(LLM unavailable) You said: {user_input}"
     used_source_ids: list[str] = []

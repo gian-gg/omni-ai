@@ -12,9 +12,17 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-def _run_chat(prompt: str, authenticated_user: AuthenticatedUser) -> ChatResponse:
+def _run_chat(
+    prompt: str,
+    authenticated_user: AuthenticatedUser,
+    history: list[dict[str, str]] | None = None,
+) -> ChatResponse:
     try:
-        result = run_orchestrator(prompt, user_id=authenticated_user.user.id)
+        result = run_orchestrator(
+            prompt,
+            user_id=authenticated_user.user.id,
+            history=history,
+        )
     except ValueError as error:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -55,4 +63,5 @@ def chat(
         AuthenticatedUser, Depends(get_current_authenticated_user)
     ],
 ) -> ChatResponse:
-    return _run_chat(req.prompt, authenticated_user)
+    history = [{"role": m.role, "content": m.content} for m in req.history]
+    return _run_chat(req.prompt, authenticated_user, history=history)

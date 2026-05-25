@@ -31,8 +31,19 @@ class NoteData(BaseModel):
     date: _date | None = None
 
 
+MAX_HISTORY_MESSAGES = 50
+
+
+class ChatMessage(BaseModel):
+    role: Literal["user", "assistant"]
+    content: str = Field(..., min_length=1, max_length=10_000)
+
+
 class ChatRequest(BaseModel):
     prompt: str = Field(..., min_length=1, max_length=10_000)
+    history: list[ChatMessage] = Field(
+        default_factory=list, max_length=MAX_HISTORY_MESSAGES
+    )
 
     @field_validator("prompt")
     @classmethod
