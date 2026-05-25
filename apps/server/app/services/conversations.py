@@ -10,9 +10,8 @@ from app.models.conversation import Conversation, Message
 from app.services.orchestrator import OrchestratorResult, run_orchestrator
 
 MAX_TITLE_LENGTH = 60
-# Upper bound on messages pulled from the DB to build history. The orchestrator
-# re-caps to its own MAX_HISTORY_MESSAGES before calling the LLM.
-HISTORY_QUERY_LIMIT = 50
+# Most recent messages pulled from the DB to seed the orchestrator's history.
+HISTORY_QUERY_LIMIT = 3
 
 _WHITESPACE_RE = re.compile(r"\s+")
 
