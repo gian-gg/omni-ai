@@ -1,18 +1,21 @@
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
+import { useCallback, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { OmniColors, OmniFonts, OmniGradient } from '@/constants/theme';
+import { listTransactions, listTodos, listNotes } from '@/api/client';
 
 type SpaceCard = {
+  id: 'transactions' | 'todos' | 'thoughts';
   title: string;
-  badge: string;
+  badgeSuffix: string;
   description: string;
   cta: string;
   icon: keyof typeof MaterialIcons.glyphMap;
-  route?: string;
+  route: string;
 };
 
 type StatRow = {
@@ -24,24 +27,27 @@ type StatRow = {
 
 const SPACES: SpaceCard[] = [
   {
+    id: 'transactions',
     title: 'Transactions',
-    badge: '32 saved',
+    badgeSuffix: 'saved',
     description: 'Financial records extracted from chat and receipts.',
     cta: 'Open transaction space',
     icon: 'receipt-long',
     route: '/spaces/transactions',
   },
   {
+    id: 'todos',
     title: 'To-Dos',
-    badge: '9 due',
+    badgeSuffix: 'due',
     description: 'Actionable tasks with due times and source context.',
     cta: 'Open to-do space',
     icon: 'check-circle-outline',
     route: '/spaces/todos',
   },
   {
+    id: 'thoughts',
     title: 'Thoughts',
-    badge: '14 drafts',
+    badgeSuffix: 'drafts',
     description: 'Structured notes that can be promoted into tasks or plans.',
     cta: 'Open thought space',
     icon: 'lightbulb-outline',
@@ -74,12 +80,14 @@ function HeroBanner() {
   );
 }
 
-function SpaceCardItem({ space }: { space: SpaceCard }) {
+function SpaceCardItem({ space, count }: { space: SpaceCard; count: number | null }) {
   const router = useRouter();
+  const badgeText = count === null ? '...' : `${count} ${space.badgeSuffix}`;
+
   return (
     <Pressable
       style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
-      onPress={() => space.route && router.push(space.route as any)}
+      onPress={() => router.push(space.route as any)}
     >
       <View style={styles.cardHeader}>
         <View style={styles.cardTitleRow}>
@@ -87,7 +95,7 @@ function SpaceCardItem({ space }: { space: SpaceCard }) {
           <Text style={styles.cardTitle}>{space.title}</Text>
         </View>
         <View style={styles.badge}>
-          <Text style={styles.badgeText}>{space.badge}</Text>
+          <Text style={styles.badgeText}>{badgeText}</Text>
         </View>
       </View>
       <Text style={styles.cardDesc}>{space.description}</Text>
@@ -143,6 +151,43 @@ function AnalyticsCard() {
 
 export default function SpacesScreen() {
   const router = useRouter();
+  
+  const [counts, setCounts] = useState<{
+    transactions: number | null;
+    todos: number | null;
+    thoughts: number | null;
+  }>({
+    transactions: null,
+    todos: null,
+    thoughts: null,
+  });
+
+  useFocusEffect(
+    useCallback(() => {
+      async function fetchCounts() {
+        try {
+          // Fetch just 1 item from each endpoint simply to get the total metadata
+          const [txRes, todoRes, noteRes] = await Promise.all([
+            listTransactions(1, 0),
+            listTodos(1, 0),
+            listNotes(1, 0)
+          ]);
+          
+          setCounts({
+            transactions: txRes.total,
+            todos: todoRes.total,
+            thoughts: noteRes.total,
+          });
+        } catch (err) {
+          console.error('Failed to fetch space counts', err);
+          // On error, leave as null to show "..." or set to 0. 
+        }
+      }
+      
+      fetchCounts();
+    }, [])
+  );
+
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <ScrollView
@@ -155,7 +200,7 @@ export default function SpacesScreen() {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Specific Spaces</Text>
           {SPACES.map((s) => (
-            <SpaceCardItem key={s.title} space={s} />
+            <SpaceCardItem key={s.id} space={s} count={counts[s.id]} />
           ))}
         </View>
 

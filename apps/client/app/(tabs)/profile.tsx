@@ -1,6 +1,6 @@
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { ScrollView, StyleSheet, Text, View, Pressable } from 'react-native';
+import { ScrollView, StyleSheet, Text, View, Pressable, TextInput } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import { useState, useEffect } from 'react';
@@ -9,6 +9,8 @@ import * as SecureStore from 'expo-secure-store';
 import { jwtDecode } from 'jwt-decode';
 
 import { OmniColors, OmniFonts, OmniGradient } from '@/constants/theme';
+import { getMe, updateProfile } from '@/api/client';
+import { OmniActionSheet } from '@/components/ui/OmniActionSheet';
 
 // ── Types ───────────────────────────────────────────────────────────
 
@@ -51,28 +53,15 @@ type UserSettings = {
 
 const PROFILE_DATA: UserProfile = {
   id: 'usr_123',
-  name: 'Gian Gallardo',
-  email: 'gian@omni.app',
+  name: '',
+  email: '',
   avatarUrl: null, // Unset profile photo
   plan: 'Pro workspace',
-  memberSinceYear: 2024,
+  memberSinceYear: new Date().getFullYear(),
   stats: {
-    captured: 214,
-    activeSpaces: 3,
-    streakDays: 12,
-  },
-};
-
-const SETTINGS_DATA: UserSettings = {
-  account: {
-    defaultInputMode: { label: 'Default input mode', value: 'Voice + text' },
-    timezone: { label: 'Timezone', value: 'America/New_York' },
-    language: { label: 'Language', value: 'English' },
-  },
-  notifications: {
-    draftReminders: { label: 'Draft reminders', value: 'On', isToggle: true },
-    dailySummary: { label: 'Daily summary', value: 'On', isToggle: true },
-    productUpdates: { label: 'Product updates', value: 'Off', isToggle: true },
+    captured: 0,
+    activeSpaces: 0,
+    streakDays: 0,
   },
 };
 
@@ -104,14 +93,9 @@ function ProfileCard({ profile }: { profile: UserProfile }) {
               <Text style={styles.profileName} numberOfLines={1}>{profile.name}</Text>
               <Text style={styles.profileEmail} numberOfLines={1}>{profile.email}</Text>
             </View>
-            <Pressable style={styles.settingsBtn}>
-              <MaterialIcons name="settings" size={16} color="#F4F4F5" />
-            </Pressable>
           </View>
           <View style={styles.badgesRow}>
-            <View style={styles.profileBadge}>
-              <Text style={styles.profileBadgeText}>{profile.plan}</Text>
-            </View>
+
             <View style={styles.profileBadge}>
               <Text style={styles.profileBadgeTextRegular}>Member since {profile.memberSinceYear}</Text>
             </View>
@@ -119,20 +103,7 @@ function ProfileCard({ profile }: { profile: UserProfile }) {
         </View>
       </View>
 
-      <View style={styles.statsRow}>
-        <View style={styles.statBox}>
-          <Text style={styles.statLabel}>Captured</Text>
-          <Text style={styles.statValue}>{profile.stats.captured}</Text>
-        </View>
-        <View style={styles.statBox}>
-          <Text style={styles.statLabel}>Spaces</Text>
-          <Text style={styles.statValue}>{profile.stats.activeSpaces} active</Text>
-        </View>
-        <View style={styles.statBox}>
-          <Text style={styles.statLabel}>Streak</Text>
-          <Text style={styles.statValue}>{profile.stats.streakDays}d</Text>
-        </View>
-      </View>
+
     </LinearGradient>
   );
 }
@@ -163,7 +134,10 @@ function ActionItem({ label, icon, destructive, onPress }: { label: string, icon
 
 export default function ProfileScreen() {
   const [profile, setProfile] = useState<UserProfile>(PROFILE_DATA);
-  const settings = SETTINGS_DATA;
+  const [displayName, setDisplayName] = useState<string>('');
+  const [currency, setCurrency] = useState<string>('USD');
+  const [currencySheetVisible, setCurrencySheetVisible] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
@@ -180,8 +154,22 @@ export default function ProfileScreen() {
             avatarUrl: decoded.user_metadata?.avatar_url || decoded.user_metadata?.picture || prev.avatarUrl,
           }));
         }
+
+        const me = await getMe();
+        if (me.user.display_name) {
+          setDisplayName(me.user.display_name);
+        } else if (token) {
+          const decoded = jwtDecode<any>(token);
+          setDisplayName(decoded.user_metadata?.full_name || decoded.user_metadata?.name || '');
+        }
+        if (me.user.currency) {
+          setCurrency(me.user.currency);
+        }
+        if (me.user.created_at) {
+          setProfile(prev => ({ ...prev, memberSinceYear: new Date(me.user.created_at).getFullYear() }));
+        }
       } catch (e) {
-        console.error('Failed to decode token', e);
+        console.error('Failed to load profile', e);
       }
     }
     loadProfile();
@@ -193,38 +181,67 @@ export default function ProfileScreen() {
     router.replace('/welcome');
   };
 
+  const handleUpdate = async (updates: { display_name?: string; currency?: string }) => {
+    setIsSaving(true);
+    try {
+      await updateProfile(updates);
+      if (updates.display_name !== undefined) setDisplayName(updates.display_name);
+      if (updates.currency !== undefined) setCurrency(updates.currency);
+    } catch (err) {
+      console.error('Failed to update profile', err);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const effectiveName = displayName || profile.name;
+
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-        <ProfileCard profile={profile} />
+        <ProfileCard profile={{ ...profile, name: effectiveName }} />
+
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Preferences</Text>
+          <View style={styles.settingsGroup}>
+            <View style={styles.inputItem}>
+              <Text style={styles.inputItemLabel}>Display Name</Text>
+              <TextInput
+                style={styles.inputItemField}
+                value={displayName}
+                onChangeText={setDisplayName}
+                onBlur={() => handleUpdate({ display_name: displayName })}
+                placeholder="Enter display name"
+                placeholderTextColor="#A1A1AA"
+              />
+            </View>
+            <Pressable style={styles.settingsItem} onPress={() => setCurrencySheetVisible(true)}>
+              <Text style={styles.settingsItemLabel}>Currency</Text>
+              <Text style={styles.settingsItemValue}>{currency}</Text>
+            </Pressable>
+          </View>
+        </View>
 
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Account</Text>
           <View style={styles.settingsGroup}>
-            <SettingsItem {...settings.account.defaultInputMode} />
-            <SettingsItem {...settings.account.timezone} />
-            <SettingsItem {...settings.account.language} />
-          </View>
-        </View>
-
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Notifications</Text>
-          <View style={styles.settingsGroup}>
-            <SettingsItem {...settings.notifications.draftReminders} />
-            <SettingsItem {...settings.notifications.dailySummary} />
-            <SettingsItem {...settings.notifications.productUpdates} />
-          </View>
-        </View>
-
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Data and Security</Text>
-          <View style={styles.settingsGroup}>
-            <ActionItem label="Export my records" icon="file-download" />
-            <ActionItem label="Manage Google sign-in" icon="security" />
             <ActionItem label="Sign out" icon="logout" destructive onPress={handleSignOut} />
           </View>
         </View>
       </ScrollView>
+
+      <OmniActionSheet
+        visible={currencySheetVisible}
+        title="Select Currency"
+        options={[
+          { label: 'USD ($)', onPress: () => handleUpdate({ currency: 'USD' }) },
+          { label: 'EUR (€)', onPress: () => handleUpdate({ currency: 'EUR' }) },
+          { label: 'GBP (£)', onPress: () => handleUpdate({ currency: 'GBP' }) },
+          { label: 'PHP (₱)', onPress: () => handleUpdate({ currency: 'PHP' }) },
+          { label: 'JPY (¥)', onPress: () => handleUpdate({ currency: 'JPY' }) },
+        ]}
+        onClose={() => setCurrencySheetVisible(false)}
+      />
     </SafeAreaView>
   );
 }
@@ -235,7 +252,6 @@ const styles = StyleSheet.create({
 
   // Profile Card
   profileCard: {
-    minHeight: 180,
     borderRadius: 16,
     borderWidth: 1,
     borderColor: '#27272a',
@@ -406,5 +422,29 @@ const styles = StyleSheet.create({
   },
   actionItemLabelDestructive: {
     color: '#DC2626', // red-600
+  },
+  
+  // Custom Input Item
+  inputItem: {
+    flexDirection: 'column',
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: OmniColors.mist,
+    borderRadius: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    marginBottom: 12,
+    gap: 8,
+  },
+  inputItemLabel: {
+    fontFamily: OmniFonts.body,
+    fontSize: 14,
+    color: '#52525B', // zinc-600
+  },
+  inputItemField: {
+    fontFamily: OmniFonts.bodySemiBold,
+    fontSize: 15,
+    color: OmniColors.ink,
+    padding: 0,
   },
 });

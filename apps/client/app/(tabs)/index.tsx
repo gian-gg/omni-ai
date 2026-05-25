@@ -3,12 +3,21 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useCallback, useRef, useState, useEffect } from 'react';
 import { OmniGradient } from '@/constants/theme';
 import {
-  sendMessage,
+  listConversations,
+  listConversationMessages,
+  createConversation,
+  appendMessage,
+  deleteConversation,
   createTransaction,
   createTodo,
   createNote,
+  ConversationItem,
+  MessageItem,
+  getSuggestions,
 } from '@/api/client';
+import { useFocusEffect } from 'expo-router';
 import { MarkdownText } from '@/components/markdown-text';
+import { OmniActionSheet } from '@/components/ui/OmniActionSheet';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import {
   Animated,
@@ -23,6 +32,7 @@ import {
   TouchableWithoutFeedback,
   View,
   Keyboard,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSpeechRecognitionEvent, ExpoSpeechRecognitionModule } from 'expo-speech-recognition';
@@ -92,6 +102,31 @@ function getRecordsFromStructured(intent: 'finance' | 'todo' | 'note', data: any
       ];
     default:
       return [];
+  }
+}
+
+function mapMessageItemToMessage(m: MessageItem, isHistory: boolean = false): Message {
+  const time = new Date(m.created_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  if (m.role === 'user') {
+    return { id: m.id, type: 'user', text: m.content, time };
+  } else {
+    if (m.details?.data && m.details?.intent && m.details.intent !== 'chat') {
+      return {
+        id: m.id,
+        type: 'omni-structured',
+        summary: m.content,
+        rawIntent: m.details.intent,
+        rawData: m.details.data,
+        completeResponse: m.details.complete_response,
+        cancelledResponse: m.details.cancelled_response,
+        isConfirmed: isHistory, 
+        isCancelled: false,
+        isEditing: false,
+        time,
+      };
+    } else {
+      return { id: m.id, type: 'omni', text: m.content, time };
+    }
   }
 }
 
@@ -487,12 +522,16 @@ function HistoryDrawer({
   overlayOpacity,
   onClose,
   onNewChat,
+  onSelect,
+  onOptions,
   historyItems,
 }: {
   translateX: Animated.Value;
   overlayOpacity: Animated.Value;
   onClose: () => void;
   onNewChat: () => void;
+  onSelect: (id: string) => void;
+  onOptions: (id: string) => void;
   historyItems: HistoryItem[];
 }) {
   return (
@@ -525,10 +564,23 @@ function HistoryDrawer({
           {historyItems.map((item: HistoryItem) => (
             <Pressable
               key={item.id}
+              onPress={() => onSelect(item.id)}
               style={[styles.historyItem, item.active && styles.historyItemActive]}>
-              <Text style={styles.historyItemTitle}>{item.title}</Text>
-              <Text style={styles.historyItemPreview} numberOfLines={2}>{item.preview}</Text>
-              <Text style={styles.historyItemDate}>{item.date}</Text>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <View style={{ flex: 1, paddingRight: 8 }}>
+                  <Text style={styles.historyItemTitle}>{item.title}</Text>
+                  {item.preview ? <Text style={styles.historyItemPreview} numberOfLines={2}>{item.preview}</Text> : null}
+                  <Text style={styles.historyItemDate}>{item.date}</Text>
+                </View>
+                <Pressable
+                  style={{ padding: 4, marginRight: -4, marginTop: -4 }}
+                  onPress={(e) => {
+                    e.stopPropagation();
+                    onOptions(item.id);
+                  }}>
+                  <MaterialIcons name="more-horiz" size={18} color="#A1A1AA" />
+                </Pressable>
+              </View>
             </Pressable>
           ))}
         </ScrollView>
@@ -538,41 +590,98 @@ function HistoryDrawer({
 }
 
 export default function ChatScreen() {
-  // ── Sample data — uncomment to preview UI, comment out when wiring backend ──
-  const [messages, setMessages] = useState<Message[]>(/* [
-    { id: 'divider-today', type: 'divider', label: 'Today' },
-    {
-      id: 'omni-1',
-      type: 'omni',
-      text: 'What would you like to capture? You can describe a transaction, task, note, or reminder naturally.',
-      time: '9:41 AM',
-    },
-    {
-      id: 'user-1',
-      type: 'user',
-      text: 'Paid $42.50 for lunch with Priya at Alta, tag it client meeting, and remind me to submit reimbursement tomorrow morning.',
-      time: '9:42 AM',
-    },
-    {
-      id: 'omni-2',
-      type: 'omni-structured',
-      summary: 'Captured. I extracted one transaction and one reminder. Review before saving:',
-      records: [
-        { id: 'r1', label: 'Transaction', title: '$42.50 lunch with Priya at Alta', subtitle: 'Category: Client meeting' },
-        { id: 'r2', label: 'Reminder', title: 'Submit reimbursement', subtitle: 'Scheduled: Tomorrow, 9:00 AM' },
-      ],
-      time: '9:42 AM',
-    },
-  ] */ []);
-  const [historyItems, setHistoryItems] = useState<HistoryItem[]>(/* [
-    { id: '1', title: 'Q1 tax prep checklist', preview: 'Summarized expenses and pending receipts from January to March.', date: 'Mar 4', active: true },
-    { id: '2', title: 'Client dinner reimbursement', preview: 'Captured expense details and drafted a reimbursement reminder.', date: 'Mar 2', active: false },
-    { id: '3', title: 'Weekly planning reset', preview: 'Converted rough notes into tasks and morning reminders.', date: 'Feb 28', active: false },
-    { id: '4', title: 'Apartment budget split', preview: 'Tracked shared costs and generated next rent reminder.', date: 'Feb 24', active: false },
-  ] */ []);
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [historyItems, setHistoryItems] = useState<HistoryItem[]>([]);
+  const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
+
   const [inputText, setInputText] = useState('');
   const [isSending, setIsSending] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
+
+  const [actionSheetVisible, setActionSheetVisible] = useState(false);
+  const [selectedHistoryId, setSelectedHistoryId] = useState<string | null>(null);
+
+  const handleOpenOptions = (id: string) => {
+    setSelectedHistoryId(id);
+    setActionSheetVisible(true);
+  };
+
+  const [suggestions, setSuggestions] = useState<string[]>(['Add receipt photo', 'Log quick note', 'Create reminder']);
+  const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(true);
+
+  useFocusEffect(
+    useCallback(() => {
+      async function fetchSuggestions() {
+        setIsLoadingSuggestions(true);
+        try {
+          const res = await getSuggestions();
+          if (res.suggestions && res.suggestions.length > 0) {
+            setSuggestions(res.suggestions);
+          }
+        } catch (err) {
+          console.error("Failed to load suggestions", err);
+        } finally {
+          setIsLoadingSuggestions(false);
+        }
+      }
+      fetchSuggestions();
+    }, [])
+  );
+
+  // Fetch conversations history
+  useFocusEffect(
+    useCallback(() => {
+      async function fetchHistory() {
+        try {
+          const res = await listConversations(50, 0);
+          const formatted: HistoryItem[] = res.items.map(conv => ({
+            id: conv.id,
+            title: conv.title,
+            preview: '', 
+            date: new Date(conv.updated_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
+            active: conv.id === currentConversationId,
+          }));
+          setHistoryItems(formatted);
+        } catch (err) {
+          console.error("Failed to load history", err);
+        }
+      }
+      fetchHistory();
+    }, [currentConversationId])
+  );
+
+  // Load a specific conversation
+  const loadConversation = async (id: string) => {
+    closeDrawer();
+    setCurrentConversationId(id);
+    try {
+      const res = await listConversationMessages(id);
+      const formattedMessages = res.items.map(m => mapMessageItemToMessage(m, true));
+      setMessages(formattedMessages);
+    } catch (err) {
+      console.error("Failed to load conversation messages", err);
+      setMessages([]);
+    }
+  };
+
+  // Start a new chat
+  const handleNewChat = () => {
+    closeDrawer();
+    setCurrentConversationId(null);
+    setMessages([]);
+  };
+
+  const handleDeleteConversation = async (id: string) => {
+    try {
+      await deleteConversation(id);
+      setHistoryItems((prev) => prev.filter((item) => item.id !== id));
+      if (currentConversationId === id) {
+        handleNewChat();
+      }
+    } catch (err) {
+      alert("Failed to delete conversation.");
+    }
+  };
   
   // Speech-to-Text State
   const [recognizing, setRecognizing] = useState(false);
@@ -701,38 +810,24 @@ export default function ChatScreen() {
     const time = now.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
     const userMsgId = `user-${Date.now()}`;
 
-    // Append user message
     const userMsg: Message = { id: userMsgId, type: 'user', text, time };
     setMessages((prev) => [...prev, userMsg]);
     setInputText('');
     setIsSending(true);
 
     try {
-      const res = await sendMessage(text);
-      if ((res.intent === 'finance' || res.intent === 'todo' || res.intent === 'note') && res.data) {
-        const omniMsg: Message = {
-          id: `omni-${Date.now()}`,
-          type: 'omni-structured',
-          summary: res.response,
-          rawIntent: res.intent,
-          rawData: res.data,
-          completeResponse: res.complete_response,
-          cancelledResponse: res.cancelled_response,
-          isConfirmed: false,
-          isCancelled: false,
-          isEditing: false,
-          time: new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }),
-        };
-        setMessages((prev) => [...prev, omniMsg]);
+      let assistantMsgItem: MessageItem;
+      
+      if (currentConversationId) {
+        assistantMsgItem = await appendMessage(currentConversationId, text);
       } else {
-        const omniMsg: Message = {
-          id: `omni-${Date.now()}`,
-          type: 'omni',
-          text: res.response,
-          time: new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }),
-        };
-        setMessages((prev) => [...prev, omniMsg]);
+        const res = await createConversation(text);
+        setCurrentConversationId(res.conversation.id);
+        assistantMsgItem = res.message;
       }
+      
+      const omniMsg = mapMessageItemToMessage(assistantMsgItem, false);
+      setMessages((prev) => [...prev, omniMsg]);
     } catch (err) {
       const errMsg: Message = {
         id: `err-${Date.now()}`,
@@ -744,7 +839,7 @@ export default function ChatScreen() {
     } finally {
       setIsSending(false);
     }
-  }, [inputText, isSending]);
+  }, [inputText, isSending, currentConversationId]);
 
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   const insets = useSafeAreaInsets();
@@ -845,11 +940,18 @@ export default function ChatScreen() {
             horizontal
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.chipsRow}>
-            {['Add receipt photo', 'Log quick note', 'Create reminder'].map((chip) => (
-              <Pressable key={chip} style={styles.chip}>
-                <Text style={styles.chipText}>{chip}</Text>
-              </Pressable>
-            ))}
+            {isLoadingSuggestions ? (
+              <View style={[styles.chip, { flexDirection: 'row', alignItems: 'center', gap: 6, opacity: 0.7 }]}>
+                <ActivityIndicator size={12} color="#71717A" />
+                <Text style={styles.chipText}>Loading suggestions...</Text>
+              </View>
+            ) : (
+              suggestions.map((chip) => (
+                <Pressable key={chip} style={styles.chip} onPress={() => setInputText(chip)}>
+                  <Text style={styles.chipText}>{chip}</Text>
+                </Pressable>
+              ))
+            )}
           </ScrollView>
         </View>
 
@@ -861,13 +963,27 @@ export default function ChatScreen() {
             translateX={translateX}
             overlayOpacity={overlayOpacity}
             onClose={closeDrawer}
-            onNewChat={() => {
-              setMessages([]);
-              closeDrawer();
-            }}
+            onNewChat={handleNewChat}
+            onSelect={loadConversation}
+            onOptions={handleOpenOptions}
             historyItems={historyItems}
           />
         )}
+
+        <OmniActionSheet
+          visible={actionSheetVisible}
+          title="Conversation Options"
+          options={[
+            { 
+              label: 'Delete', 
+              destructive: true, 
+              onPress: () => {
+                if (selectedHistoryId) handleDeleteConversation(selectedHistoryId);
+              } 
+            }
+          ]}
+          onClose={() => setActionSheetVisible(false)}
+        />
     </SafeAreaView>
   );
 }

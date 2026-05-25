@@ -1,11 +1,13 @@
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
+import { useCallback, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { OmniColors, OmniFonts, OmniGradient } from '@/constants/theme';
 import { Pressable } from 'react-native';
+import { listTransactions, listTodos, listNotes } from '@/api/client';
 
 // ── Types ───────────────────────────────────────────────────────────
 
@@ -16,6 +18,7 @@ type Metric = {
 };
 
 type SpaceBreakdown = {
+  id: 'transactions' | 'todos' | 'thoughts';
   label: string;
   value: string;
   /** 0-1 fraction for the progress bar */
@@ -41,12 +44,6 @@ const METRICS: Metric[] = [
     value: '1m 18s',
     subtitle: 'From draft creation to confirm',
   },
-];
-
-const SPACE_BREAKDOWN: SpaceBreakdown[] = [
-  { label: 'Transactions', value: '32', progress: 0.8, useGradient: true },
-  { label: 'To-Dos',       value: '8',  progress: 0.33 },
-  { label: 'Thoughts',     value: '14', progress: 0.5 },
 ];
 
 // ── Sub-components ──────────────────────────────────────────────────
@@ -83,7 +80,7 @@ function MetricCard({ metric }: { metric: Metric }) {
 }
 
 function BreakdownBar({ item }: { item: SpaceBreakdown }) {
-  const fill = `${item.progress * 100}%` as const;
+  const fill = `${Math.max(0, Math.min(100, item.progress * 100))}%` as const;
   return (
     <View style={styles.breakdownRow}>
       <View style={styles.breakdownLabelRow}>
@@ -111,6 +108,68 @@ function BreakdownBar({ item }: { item: SpaceBreakdown }) {
 export default function AnalyticsScreen() {
   const router = useRouter();
 
+  const [counts, setCounts] = useState<{
+    transactions: number | null;
+    todos: number | null;
+    thoughts: number | null;
+  }>({
+    transactions: null,
+    todos: null,
+    thoughts: null,
+  });
+
+  useFocusEffect(
+    useCallback(() => {
+      async function fetchCounts() {
+        try {
+          const [txRes, todoRes, noteRes] = await Promise.all([
+            listTransactions(1, 0),
+            listTodos(1, 0),
+            listNotes(1, 0)
+          ]);
+          
+          setCounts({
+            transactions: txRes.total,
+            todos: todoRes.total,
+            thoughts: noteRes.total,
+          });
+        } catch (err) {
+          console.error('Failed to fetch analytics space counts', err);
+        }
+      }
+      
+      fetchCounts();
+    }, [])
+  );
+
+  // Calculate total to determine progress bar percentages
+  const tCount = counts.transactions || 0;
+  const doCount = counts.todos || 0;
+  const thCount = counts.thoughts || 0;
+  const total = tCount + doCount + thCount;
+
+  const spaceBreakdown: SpaceBreakdown[] = [
+    { 
+      id: 'transactions',
+      label: 'Transactions', 
+      value: counts.transactions === null ? '...' : String(tCount), 
+      progress: total > 0 ? tCount / total : 0, 
+      useGradient: true 
+    },
+    { 
+      id: 'todos',
+      label: 'To-Dos',       
+      value: counts.todos === null ? '...' : String(doCount),  
+      progress: total > 0 ? doCount / total : 0 
+    },
+    { 
+      id: 'thoughts',
+      label: 'Thoughts',     
+      value: counts.thoughts === null ? '...' : String(thCount), 
+      progress: total > 0 ? thCount / total : 0 
+    },
+  ];
+
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <ScrollView
@@ -136,8 +195,8 @@ export default function AnalyticsScreen() {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Space Breakdown</Text>
           <View style={styles.breakdownCard}>
-            {SPACE_BREAKDOWN.map((item) => (
-              <BreakdownBar key={item.label} item={item} />
+            {spaceBreakdown.map((item) => (
+              <BreakdownBar key={item.id} item={item} />
             ))}
           </View>
         </View>
