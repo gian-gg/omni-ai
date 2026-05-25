@@ -104,6 +104,12 @@ class ConversationMessagesResponse(BaseModel):
     items: list[MessageResponse]
 
 
+class SuggestionsResponse(BaseModel):
+    suggestions: list[str]
+    generated_at: datetime
+    cached: bool
+
+
 class AuthenticatedUserResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
