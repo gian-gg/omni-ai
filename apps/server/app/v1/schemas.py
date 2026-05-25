@@ -10,7 +10,6 @@ IntentType = Literal["finance", "todo", "note", "chat"]
 class FinanceData(BaseModel):
     type: Literal["income", "expense"]
     amount: float
-    currency: str = "USD"
     category: str | None = None
     description: str | None = None
     date: _date | None = None
@@ -202,7 +201,6 @@ class TransactionResponse(BaseModel):
     id: str
     type: Literal["income", "expense"]
     amount: float
-    currency: str
     category: str | None
     description: str | None
     date: _date
@@ -213,7 +211,6 @@ class TransactionResponse(BaseModel):
 class TransactionUpdateRequest(BaseModel):
     type: Literal["income", "expense"] | None = None
     amount: float | None = None
-    currency: str | None = None
     category: str | None = None
     description: str | None = None
     date: _date | None = None

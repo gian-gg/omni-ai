@@ -59,7 +59,6 @@ def list_transactions(
             "id": r.id,
             "type": r.type,
             "amount": _decimal(r.amount),
-            "currency": r.currency,
             "category": r.category,
             "description": r.description,
             "date": r.date.isoformat(),

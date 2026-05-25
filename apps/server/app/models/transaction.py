@@ -26,7 +26,6 @@ class Transaction(TimestampMixin, Base):
     )
     type: Mapped[str] = mapped_column(String(16), nullable=False)
     amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
-    currency: Mapped[str] = mapped_column(String(3), nullable=False, default="USD")
     category: Mapped[str | None] = mapped_column(String(64), nullable=True)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     date: Mapped[_date] = mapped_column(Date, nullable=False, index=True)

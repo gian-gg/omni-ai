@@ -37,17 +37,8 @@ def create(
     ],
     db_session: Annotated[Session, Depends(get_db_session)],
 ) -> TransactionResponse:
-    # Apply the user's default currency only when the client omitted one.
-    currency_override = (
-        authenticated_user.user.currency
-        if "currency" not in payload.model_fields_set
-        else None
-    )
     transaction = service.create_transaction(
-        db_session,
-        authenticated_user.user.id,
-        payload,
-        currency_override=currency_override,
+        db_session, authenticated_user.user.id, payload
     )
     return TransactionResponse.model_validate(transaction)
 

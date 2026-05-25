@@ -29,7 +29,6 @@ Schema:
   "data": {
     "type": "income" | "expense",
     "amount": number,            // positive
-    "currency": string,          // ISO 4217, default "USD"
     "category": string | null,
     "description": string | null,
     "date": string | null        // ISO 8601 date if the user stated one; else null
@@ -45,7 +44,6 @@ Canonical example (user said: "I bought coffee for $4 at Starbucks"):
   "data": {
     "type": "expense",
     "amount": 4,
-    "currency": "USD",
     "category": "food",
     "description": "coffee at Starbucks",
     "date": null
