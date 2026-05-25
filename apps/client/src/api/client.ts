@@ -1,4 +1,5 @@
 import * as SecureStore from 'expo-secure-store';
+import EventSource from 'react-native-sse';
 
 const API_BASE = 'https://omni-api.giann.dev/api/v1';
 
@@ -193,6 +194,93 @@ export async function deleteConversation(conversationId: string): Promise<void> 
   });
 }
 
+export type ConvStreamEvent = {
+  event: 'meta' | 'delta' | 'message';
+  data: any;
+};
+
+export type StreamCallbacks = {
+  onEvent?: (event: ConvStreamEvent) => void;
+  onError?: (error: any) => void;
+  onClose?: () => void;
+};
+
+function createSSE(path: string, payload: any, callbacks: StreamCallbacks): () => void {
+  let isClosed = false;
+  let es: EventSource | null = null;
+
+  SecureStore.getItemAsync('access_token').then((token) => {
+    if (isClosed) return;
+    
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+
+    es = new EventSource(`${API_BASE}${path}`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(payload),
+    });
+
+    const handleMessage = (e: any) => {
+      try {
+        const data = JSON.parse(e.data || '{}');
+        callbacks.onEvent?.({ event: e.type, data });
+      } catch (err) {
+        // ignore parse error
+      }
+    };
+
+    es.addEventListener('meta' as any, handleMessage);
+    es.addEventListener('delta' as any, handleMessage);
+    es.addEventListener('message', (e: any) => {
+      handleMessage(e);
+      // Once we get the final message event, the stream is effectively done.
+      // We can close it manually to avoid waiting for timeout.
+      if (es) {
+        es.close();
+        callbacks.onClose?.();
+      }
+    });
+    
+    es.addEventListener('error', (e: any) => {
+      // react-native-sse triggers error when server closes connection sometimes
+      // If we got 'error' event type from server SSE (which we emit manually on failure)
+      if (e.type === 'error' && e.data) {
+        try {
+          const data = JSON.parse(e.data);
+          callbacks.onError?.(data.detail || 'Streaming failed');
+        } catch {
+          callbacks.onError?.('Streaming failed');
+        }
+      } else {
+        callbacks.onError?.(e.message || 'Stream connection error');
+      }
+      es?.close();
+    });
+
+  }).catch((err) => {
+    callbacks.onError?.(err);
+  });
+
+  return () => {
+    isClosed = true;
+    if (es) {
+      es.removeAllEventListeners();
+      es.close();
+    }
+  };
+}
+
+export function streamCreateConversation(prompt: string, callbacks: StreamCallbacks): () => void {
+  return createSSE('/conversations', { prompt }, callbacks);
+}
+
+export function streamAppendMessage(conversationId: string, prompt: string, callbacks: StreamCallbacks): () => void {
+  return createSSE(`/conversations/${conversationId}/messages`, { prompt }, callbacks);
+}
+
 // ── Suggestions ─────────────────────────────────────────────────────────
 
 export type SuggestionsResponse = {
@@ -251,6 +339,20 @@ export type TransactionItem = {
   created_at: string;
   updated_at: string;
 };
+
+// ── Analytics ────────────────────────────────────────────────────────
+
+export type AnalyticsOverviewResponse = {
+  net_balance: number;
+  transaction_count: number;
+  open_todos: number;
+  overdue_todos: number;
+  total_notes: number;
+};
+
+export async function getAnalyticsOverview(): Promise<AnalyticsOverviewResponse> {
+  return apiFetch<AnalyticsOverviewResponse>('/analytics/overview');
+}
 
 export type TransactionListResponse = {
   items: TransactionItem[];

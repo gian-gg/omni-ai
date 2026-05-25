@@ -52,7 +52,7 @@ const TABS: { key: TabKey; label: string }[] = [
 
 // ── Sub-components ──────────────────────────────────────────────────
 
-function SummaryBanner({ dueToday, completed }: { dueToday: number; completed: number }) {
+function SummaryBanner({ dueToday, completed, overdue }: { dueToday: number; completed: number; overdue: number }) {
   return (
     <LinearGradient
       colors={OmniGradient}
@@ -62,16 +62,16 @@ function SummaryBanner({ dueToday, completed }: { dueToday: number; completed: n
     >
       <View style={styles.bannerRow}>
         <View style={styles.bannerStat}>
+          <Text style={styles.bannerStatLabel}>Overdue</Text>
+          <Text style={styles.bannerStatValue}>{overdue}</Text>
+        </View>
+        <View style={styles.bannerStat}>
           <Text style={styles.bannerStatLabel}>Due today</Text>
           <Text style={styles.bannerStatValue}>{dueToday}</Text>
         </View>
         <View style={styles.bannerStat}>
           <Text style={styles.bannerStatLabel}>Completed</Text>
           <Text style={styles.bannerStatValue}>{completed}</Text>
-        </View>
-        <View style={styles.bannerStat}>
-          <Text style={styles.bannerStatLabel}>Streak</Text>
-          <Text style={styles.bannerStatValue}>5d</Text>
         </View>
       </View>
     </LinearGradient>
@@ -535,6 +535,11 @@ export default function TodosScreen() {
     return !t.is_done && effectiveDate === todayStr;
   }).length;
 
+  const overdueCount = todos.filter((t) => {
+    const effectiveDate = t.due_date || t.date;
+    return !t.is_done && effectiveDate && effectiveDate < todayStr;
+  }).length;
+
   const completedCount = todos.filter((t) => t.is_done).length;
 
   // Filter list by Tab
@@ -606,7 +611,7 @@ export default function TodosScreen() {
 
             <Text style={styles.screenTitle}>To Do List</Text>
 
-            <SummaryBanner dueToday={dueTodayCount} completed={completedCount} />
+            <SummaryBanner dueToday={dueTodayCount} completed={completedCount} overdue={overdueCount} />
             <FilterTabs active={activeTab} onSelect={setActiveTab} />
             <SearchBar 
               value={search} 
