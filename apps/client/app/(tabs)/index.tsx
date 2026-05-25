@@ -41,7 +41,7 @@ import { useSpeechRecognitionEvent, ExpoSpeechRecognitionModule } from 'expo-spe
 
 type Message =
   | { id: string; type: 'divider'; label: string }
-  | { id: string; type: 'omni'; text: string; time: string }
+  | { id: string; type: 'omni'; text: string; time: string; tokens?: number }
   | { id: string; type: 'user'; text: string; time: string }
   | {
       id: string;
@@ -55,6 +55,7 @@ type Message =
       isCancelled?: boolean;
       isEditing?: boolean;
       time: string;
+      tokens?: number;
     };
 
 type HistoryItem = {
@@ -117,6 +118,7 @@ function getRecordsFromStructured(intent: 'finance' | 'todo' | 'note', data: any
 
 function mapMessageItemToMessage(m: MessageItem, isHistory: boolean = false): Message {
   const time = new Date(m.created_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  const tokens = m.details?.tokens;
   if (m.role === 'user') {
     return { id: m.id, type: 'user', text: m.content, time };
   } else {
@@ -133,9 +135,10 @@ function mapMessageItemToMessage(m: MessageItem, isHistory: boolean = false): Me
         isCancelled: false,
         isEditing: false,
         time,
+        tokens,
       };
     } else {
-      return { id: m.id, type: 'omni', text: m.content, time };
+      return { id: m.id, type: 'omni', text: m.content, time, tokens };
     }
   }
 }
@@ -165,12 +168,51 @@ function DateDivider({ label }: { label: string }) {
   );
 }
 
-function OmniMessage({ text, time }: { text: string; time: string }) {
+function TypingIndicator() {
+  const dot1 = useRef(new Animated.Value(0)).current;
+  const dot2 = useRef(new Animated.Value(0)).current;
+  const dot3 = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    const animateDot = (anim: Animated.Value) => {
+      return Animated.sequence([
+        Animated.timing(anim, { toValue: -4, duration: 250, useNativeDriver: true }),
+        Animated.timing(anim, { toValue: 0, duration: 250, useNativeDriver: true }),
+      ]);
+    };
+
+    Animated.loop(
+      Animated.stagger(150, [
+        animateDot(dot1),
+        animateDot(dot2),
+        animateDot(dot3),
+      ])
+    ).start();
+  }, []);
+
+  const dotStyle = { width: 6, height: 6, borderRadius: 3, backgroundColor: '#A1A1AA', marginHorizontal: 2 };
+
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', height: 20, marginTop: 6 }}>
+      <Animated.View style={[dotStyle, { transform: [{ translateY: dot1 }] }]} />
+      <Animated.View style={[dotStyle, { transform: [{ translateY: dot2 }] }]} />
+      <Animated.View style={[dotStyle, { transform: [{ translateY: dot3 }] }]} />
+    </View>
+  );
+}
+
+function OmniMessage({ text, time, tokens }: { text: string; time: string; tokens?: number }) {
   return (
     <View style={styles.omniBubble}>
       <Text style={styles.senderLabel}>Omni</Text>
-      <MarkdownText style={styles.omniText}>{text}</MarkdownText>
-      <Text style={styles.timeText}>{time}</Text>
+      {text === '' ? (
+        <TypingIndicator />
+      ) : (
+        <>
+          <MarkdownText style={styles.omniText}>{text}</MarkdownText>
+          <Text style={styles.timeText}>{time}{tokens ? ` • ${tokens} tokens` : ''}</Text>
+        </>
+      )}
     </View>
   );
 }
@@ -201,6 +243,7 @@ function OmniStructuredMessage({
   isCancelled,
   isEditing,
   time,
+  tokens,
   userCurrency,
   onConfirm,
   onCancel,
@@ -218,6 +261,7 @@ function OmniStructuredMessage({
   isCancelled?: boolean;
   isEditing?: boolean;
   time: string;
+  tokens?: number;
   userCurrency: string;
   onConfirm: (id: string) => void;
   onCancel: (id: string) => void;
@@ -482,7 +526,7 @@ function OmniStructuredMessage({
         </View>
       )}
 
-      <Text style={styles.timeText}>{time}</Text>
+      <Text style={styles.timeText}>{time}{tokens ? ` • ${tokens} tokens` : ''}</Text>
     </View>
   );
 }
@@ -500,7 +544,7 @@ function renderMessage(
     case 'divider':
       return <DateDivider label={item.label} />;
     case 'omni':
-      return <OmniMessage text={item.text} time={item.time} />;
+      return <OmniMessage text={item.text} time={item.time} tokens={item.tokens} />;
     case 'user':
       return <UserMessage text={item.text} time={item.time} />;
     case 'omni-structured':
@@ -516,6 +560,7 @@ function renderMessage(
           isCancelled={item.isCancelled}
           isEditing={item.isEditing}
           time={item.time}
+          tokens={item.tokens}
           userCurrency={userCurrency}
           onConfirm={onConfirm}
           onCancel={onCancel}
