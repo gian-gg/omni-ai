@@ -9,6 +9,7 @@ VALID_INTENTS: frozenset[str] = frozenset({"finance", "todo", "note", "chat"})
 
 class OrchestratorState(TypedDict):
     user_id: str | None
+    currency: str | None
     user_input: str
     history: list[dict[str, str]]
     intent: IntentType

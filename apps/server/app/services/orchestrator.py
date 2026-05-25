@@ -97,6 +97,7 @@ def run_orchestrator(
     user_input: str,
     user_id: str | None = None,
     history: list[dict[str, Any]] | None = None,
+    currency: str | None = None,
 ) -> OrchestratorResult:
     clean_input = user_input.strip()
     if not clean_input:
@@ -104,6 +105,7 @@ def run_orchestrator(
 
     initial_state: OrchestratorState = {
         "user_id": user_id,
+        "currency": currency,
         "user_input": clean_input,
         "history": _normalize_history(history),
         "intent": "chat",

@@ -4,6 +4,7 @@ import logging
 from datetime import date as _date
 from typing import Any
 
+from app.graph.nodes._currency_context import format_currency_context
 from app.graph.nodes._llm_client import call_llm, parse_json_object
 from app.graph.nodes._notes_context import format_notes_context
 from app.graph.nodes._tool_context import format_tool_context
@@ -124,8 +125,13 @@ def _run_extractor(
     user_input: str,
     notes_context: list[dict[str, Any]] | None = None,
     tool_calls: list[dict[str, Any]] | None = None,
+    currency: str | None = None,
 ) -> dict[str, Any]:
-    blocks = [format_notes_context(notes_context), format_tool_context(tool_calls)]
+    blocks = [
+        format_currency_context(currency),
+        format_notes_context(notes_context),
+        format_tool_context(tool_calls),
+    ]
     context_block = "".join(b for b in blocks if b)
     full_prompt = f"{context_block}\n{prompt}" if context_block else prompt
     result = call_llm(full_prompt, user_input, json_mode=True)
@@ -188,6 +194,7 @@ def extract_finance_node(state: OrchestratorState) -> dict[str, Any]:
         state["user_input"],
         state.get("notes_context"),
         state.get("tool_calls"),
+        currency=state.get("currency"),
     )
 
 

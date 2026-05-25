@@ -7,9 +7,12 @@ from app.graph.nodes.query import query_node
 from app.graph.state import OrchestratorState
 
 
-def _state(user_id: str | None = "u1") -> OrchestratorState:
+def _state(
+    user_id: str | None = "u1", currency: str | None = None
+) -> OrchestratorState:
     return {
         "user_id": user_id,
+        "currency": currency,
         "user_input": "how much did I spend on coffee?",
         "intent": "chat",
         "response": "",
@@ -44,6 +47,19 @@ class QueryNodeTests(unittest.TestCase):
                     result = query_node(state)
                 call_mock.assert_not_called()
                 self.assertEqual(result, {"tool_calls": [], "tokens": 0})
+
+    def test_injects_currency_into_system_prompt(self) -> None:
+        with (
+            patch(
+                "app.graph.nodes.query.call_llm", return_value=_llm([], tokens=1)
+            ) as call_mock,
+            patch("app.graph.nodes.query.get_session_factory"),
+        ):
+            query_node(_state(currency="JPY"))
+
+        system_prompt = call_mock.call_args.args[0]
+        self.assertIn("JPY", system_prompt)
+        self.assertIn("preferred currency", system_prompt)
 
     def test_returns_empty_when_llm_emits_no_tool_calls(self) -> None:
         with (

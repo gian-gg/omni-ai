@@ -54,6 +54,7 @@ def create_conversation(
     db_session: Session,
     user_id: str,
     prompt: str,
+    currency: str | None = None,
 ) -> tuple[Conversation, Message]:
     conversation = Conversation(user_id=user_id, title=_derive_title(prompt))
     db_session.add(conversation)
@@ -68,7 +69,7 @@ def create_conversation(
         )
     )
 
-    result = run_orchestrator(prompt, user_id=user_id, history=[])
+    result = run_orchestrator(prompt, user_id=user_id, history=[], currency=currency)
     assistant_message = Message(
         conversation_id=conversation.id,
         user_id=user_id,
@@ -89,6 +90,7 @@ def add_message(
     user_id: str,
     conversation_id: str,
     prompt: str,
+    currency: str | None = None,
 ) -> Message | None:
     conversation = get_conversation(db_session, user_id, conversation_id)
     if conversation is None:
@@ -105,7 +107,9 @@ def add_message(
         )
     )
 
-    result = run_orchestrator(prompt, user_id=user_id, history=history)
+    result = run_orchestrator(
+        prompt, user_id=user_id, history=history, currency=currency
+    )
     assistant_message = Message(
         conversation_id=conversation_id,
         user_id=user_id,

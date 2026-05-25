@@ -5,6 +5,7 @@ from datetime import date as _date
 from typing import Any
 
 from app.db.session import get_session_factory
+from app.graph.nodes._currency_context import format_currency_context
 from app.graph.nodes._llm_client import call_llm
 from app.graph.state import OrchestratorState
 from app.services.tools import TOOL_EXECUTORS, TOOL_SPECS
@@ -29,8 +30,9 @@ QUERY_SYSTEM_PROMPT_TEMPLATE = (
 )
 
 
-def _build_system_prompt() -> str:
-    return QUERY_SYSTEM_PROMPT_TEMPLATE.format(today=_date.today().isoformat())
+def _build_system_prompt(currency: str | None = None) -> str:
+    base = QUERY_SYSTEM_PROMPT_TEMPLATE.format(today=_date.today().isoformat())
+    return f"{format_currency_context(currency)}{base}"
 
 
 def _execute_tool_call(
@@ -65,7 +67,7 @@ def query_node(state: OrchestratorState) -> dict[str, Any]:
         return {"tool_calls": [], "tokens": 0}
 
     result = call_llm(
-        _build_system_prompt(),
+        _build_system_prompt(state.get("currency")),
         state["user_input"],
         tools=TOOL_SPECS,
         history=state.get("history"),

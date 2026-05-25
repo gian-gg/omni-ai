@@ -59,7 +59,10 @@ def create(
 ) -> ConversationCreateResponse:
     try:
         conversation, message = service.create_conversation(
-            db_session, authenticated_user.user.id, payload.prompt
+            db_session,
+            authenticated_user.user.id,
+            payload.prompt,
+            currency=authenticated_user.user.currency,
         )
     except Exception as error:
         raise _handle_orchestrator_error(error) from error
@@ -136,6 +139,7 @@ def create_message(
             authenticated_user.user.id,
             conversation_id,
             payload.prompt,
+            currency=authenticated_user.user.currency,
         )
     except Exception as error:
         raise _handle_orchestrator_error(error) from error

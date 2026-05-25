@@ -19,9 +19,11 @@ def _state(
     notes_context: list[dict] | None = None,
     tool_calls: list[dict] | None = None,
     history: list[dict] | None = None,
+    currency: str | None = None,
 ) -> OrchestratorState:
     return {
         "user_id": None,
+        "currency": currency,
         "user_input": user_input,
         "history": history or [],
         "intent": intent,  # type: ignore[typeddict-item]
@@ -153,6 +155,17 @@ class ExtractorTests(unittest.TestCase):
         self.assertIn("Spanish coffee", system_prompt)
         self.assertIn("Relevant context", system_prompt)
 
+    def test_finance_extractor_injects_currency_into_prompt(self) -> None:
+        with patch(
+            "app.graph.nodes.extract.call_llm",
+            return_value=_llm(json.dumps({"response": "ok", "data": {}}), tokens=1),
+        ) as call_mock:
+            extract_finance_node(_state("I spent 4 on coffee", currency="PHP"))
+
+        system_prompt = call_mock.call_args.args[0]
+        self.assertIn("PHP", system_prompt)
+        self.assertIn("preferred currency", system_prompt)
+
 
 class ChatReplyTests(unittest.TestCase):
     def test_returns_llm_reply_with_tokens(self) -> None:
@@ -241,11 +254,22 @@ class ChatReplyTests(unittest.TestCase):
         self.assertIn("Pour-over recipe", system_prompt)
         self.assertIn("Relevant context", system_prompt)
 
+    def test_injects_currency_into_plain_chat_prompt(self) -> None:
+        with patch(
+            "app.graph.nodes.chat_reply.call_llm",
+            return_value=_llm("Sure thing.", tokens=2),
+        ) as call_mock:
+            chat_reply_node(_state("how much should I save?", currency="EUR"))
+
+        system_prompt = call_mock.call_args.args[0]
+        self.assertIn("EUR", system_prompt)
+        self.assertIn("preferred currency", system_prompt)
+        # Currency alone must not trigger the JSON-with-sources reply shape.
+        self.assertFalse(call_mock.call_args.kwargs.get("json_mode", False))
+
 
 class CallLlmMessageAssemblyTests(unittest.TestCase):
-    def _capture_payload(
-        self, history: list[dict] | None
-    ) -> list[dict]:
+    def _capture_payload(self, history: list[dict] | None) -> list[dict]:
         from app.graph.nodes import _llm_client
 
         captured: dict = {}
