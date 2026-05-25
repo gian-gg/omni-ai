@@ -147,8 +147,10 @@ def _run_extractor(
 
     parsed = parse_json_object(result.content)
     if parsed is None:
+        # The model returned unparseable output (e.g. leaked reasoning); fall
+        # back to a clean confirmation rather than leaking raw model text.
         return {
-            "response": result.content,
+            "response": f"Captured: {user_input}",
             "complete_response": None,
             "cancelled_response": None,
             "data": None,

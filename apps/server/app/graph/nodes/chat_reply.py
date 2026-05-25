@@ -28,7 +28,8 @@ CHAT_WITH_CONTEXT_PROMPT = (
 # available; this instructs the model to weave in the supplied context directly.
 CHAT_STREAM_CONTEXT_PROMPT = (
     "You are Omni, a helpful, concise assistant. Use the context above when it "
-    "is relevant. Reply in plain text."
+    "is relevant. Reply in plain text only — do not output JSON, code fences, or "
+    "lists of source ids."
 )
 
 

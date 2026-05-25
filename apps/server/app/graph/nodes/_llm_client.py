@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 from typing import Any, TypeGuard
@@ -11,6 +12,64 @@ import httpx
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
+
+# Reasoning models (e.g. deepseek-v4-flash) usually emit their chain-of-thought
+# on a separate `reasoning_content` channel, which we ignore. But under
+# json_object mode they sometimes bleed that thinking into the main `content`
+# channel, delimited by a special end-of-thinking token, and fence the real
+# answer. These helpers recover just the answer so reasoning never reaches a
+# user or breaks JSON parsing.
+#
+# Both the fullwidth token DeepSeek actually emits and a plain-ASCII variant are
+# matched, plus generic <think>...</think> blocks.
+_THINKING_MARKERS = ("<｜end▁of▁thinking｜>", "<|end_of_thinking|>")
+_THINK_TAG_RE = re.compile(r"<think>.*?</think>", re.DOTALL | re.IGNORECASE)
+
+
+def strip_reasoning(text: str) -> str:
+    """Drop leaked chain-of-thought, keeping only the final answer.
+
+    Removes <think>…</think> blocks and, if a thinking delimiter is present,
+    everything up to and including the last one (the answer always follows it).
+    """
+    cleaned = _THINK_TAG_RE.sub("", text)
+    cut_at = -1
+    cut_len = 0
+    for marker in _THINKING_MARKERS:
+        idx = cleaned.rfind(marker)
+        if idx > cut_at:
+            cut_at, cut_len = idx, len(marker)
+    if cut_at != -1:
+        cleaned = cleaned[cut_at + cut_len :]
+    return cleaned.strip()
+
+
+def _unwrap_code_fence(text: str) -> str:
+    """Strip a leading ```/```json fence and its closing ``` if present."""
+    stripped = text.strip()
+    if not stripped.startswith("```"):
+        return stripped
+    newline = stripped.find("\n")
+    inner = stripped[newline + 1 :] if newline != -1 else ""
+    fence_close = inner.rfind("```")
+    if fence_close != -1:
+        inner = inner[:fence_close]
+    return inner.strip()
+
+
+def _loads_object(text: str) -> object:
+    """Parse JSON, falling back to the outermost {...} substring."""
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        pass
+    start, end = text.find("{"), text.rfind("}")
+    if start == -1 or end <= start:
+        return None
+    try:
+        return json.loads(text[start : end + 1])
+    except json.JSONDecodeError:
+        return None
 
 
 @dataclass(frozen=True)
@@ -39,7 +98,7 @@ def _extract_content(payload: object) -> str | None:
     content = message.get("content")
     if not isinstance(content, str):
         return None
-    stripped = content.strip()
+    stripped = strip_reasoning(content)
     return stripped or None
 
 
@@ -155,6 +214,7 @@ def call_llm(
             {"role": "user", "content": user_input},
         ],
         "temperature": temperature,
+        "max_tokens": settings.llm_max_tokens,
     }
     if json_mode:
         payload["response_format"] = {"type": "json_object"}
@@ -193,6 +253,44 @@ class LLMStreamEvent:
     delta: str = ""
     tokens: int = 0
     done: bool = False
+
+
+class _StreamSanitizer:
+    """Removes thinking-marker tokens from a streamed content channel.
+
+    Markers can straddle delta boundaries, so a tail that could be the start of
+    one is held back until the next delta (or the final flush) resolves it.
+    """
+
+    _MAX_MARKER = max(len(m) for m in _THINKING_MARKERS)
+
+    def __init__(self) -> None:
+        self._buffer = ""
+
+    def feed(self, delta: str) -> str:
+        self._buffer += delta
+        for marker in _THINKING_MARKERS:
+            self._buffer = self._buffer.replace(marker, "")
+        hold = self._partial_tail()
+        if hold == 0:
+            out, self._buffer = self._buffer, ""
+            return out
+        out, self._buffer = self._buffer[:-hold], self._buffer[-hold:]
+        return out
+
+    def flush(self) -> str:
+        out, self._buffer = self._buffer, ""
+        return out
+
+    def _partial_tail(self) -> int:
+        """Longest buffer suffix that is a prefix of some marker."""
+        best = 0
+        for marker in _THINKING_MARKERS:
+            for k in range(min(len(self._buffer), len(marker) - 1), 0, -1):
+                if self._buffer.endswith(marker[:k]):
+                    best = max(best, k)
+                    break
+        return best
 
 
 def _stream_delta(payload: object) -> str | None:
@@ -245,11 +343,13 @@ def stream_llm(
             {"role": "user", "content": user_input},
         ],
         "temperature": temperature,
+        "max_tokens": settings.llm_max_tokens,
         "stream": True,
         "stream_options": {"include_usage": True},
     }
 
     total_tokens = 0
+    sanitizer = _StreamSanitizer()
     try:
         with httpx.Client(timeout=60) as client:
             with client.stream("POST", url, headers=headers, json=payload) as response:
@@ -270,16 +370,20 @@ def stream_llm(
                         total_tokens = tokens
                     delta = _stream_delta(chunk)
                     if delta:
-                        yield LLMStreamEvent(delta=delta)
+                        emit = sanitizer.feed(delta)
+                        if emit:
+                            yield LLMStreamEvent(delta=emit)
     except httpx.HTTPError:
         logger.exception("Streaming LLM request failed.")
 
+    tail = sanitizer.flush()
+    if tail:
+        yield LLMStreamEvent(delta=tail)
     yield LLMStreamEvent(tokens=total_tokens, done=True)
 
 
 def parse_json_object(raw: str) -> dict[str, Any] | None:
-    try:
-        parsed = json.loads(raw)
-    except json.JSONDecodeError:
-        return None
+    """Parse an LLM JSON reply, tolerating leaked reasoning and code fences."""
+    cleaned = _unwrap_code_fence(strip_reasoning(raw))
+    parsed = _loads_object(cleaned)
     return parsed if isinstance(parsed, dict) else None

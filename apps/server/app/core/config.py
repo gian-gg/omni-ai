@@ -19,6 +19,9 @@ class Settings(BaseSettings):
     gemini_base_url: str = "https://generativelanguage.googleapis.com"
     system_prompt: str = "You are a helpful, concise assistant."
     llm_model: str = "deepseek-v4-flash"
+    # Caps completion length so a degenerate model run can't balloon into a
+    # multi-hundred-KB response (observed with json_object + reasoning models).
+    llm_max_tokens: int = 2048
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

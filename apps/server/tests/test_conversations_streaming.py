@@ -16,7 +16,7 @@ from app.core.auth import (
 )
 from app.db.base import Base
 from app.db.session import get_db_session
-from app.graph.nodes._llm_client import stream_llm
+from app.graph.nodes._llm_client import LLMStreamEvent, stream_llm
 from app.main import app
 from app.models import Conversation, Message, User  # noqa: F401 — populate metadata
 from app.services.orchestrator import (
@@ -303,6 +303,44 @@ class StreamOrchestratorTestCase(unittest.TestCase):
         self.assertEqual(done.result.intent, "finance")
         self.assertEqual(done.result.response, "Log a $4 coffee?")
         self.assertEqual(done.result.tokens, 6)
+
+    def test_chat_strips_trailing_used_source_ids_json(self) -> None:
+        # The model appends a JSON trailer after the plain-text reply; it must
+        # not reach the client deltas or the persisted response, and the ids it
+        # cites should populate used_source_ids.
+        def _fake_chat_stream(_state):
+            for piece in ["Tira", "\n\n", '{"used_source_ids": ', '["n1"]}']:
+                yield LLMStreamEvent(delta=piece)
+            yield LLMStreamEvent(tokens=7, done=True)
+
+        with (
+            patch(
+                "app.services.orchestrator.classify_node",
+                return_value={"intent": "chat", "tokens": 1},
+            ),
+            patch(
+                "app.services.orchestrator.retrieve_node",
+                return_value={
+                    "notes_context": [{"id": "n1"}],
+                    "sources": [{"id": "n1", "title": "Cat's name is Tira"}],
+                },
+            ),
+            patch(
+                "app.services.orchestrator.query_node",
+                return_value={"tool_calls": [], "tokens": 0},
+            ),
+            patch(
+                "app.services.orchestrator.stream_chat_reply", _fake_chat_stream
+            ),
+        ):
+            events = list(stream_orchestrator("what's my cat's name", user_id="u1"))
+
+        deltas = [e.text for e in events if isinstance(e, StreamTextDelta)]
+        done = events[-1]
+        self.assertNotIn("used_source_ids", "".join(deltas))
+        self.assertEqual("".join(deltas).strip(), "Tira")
+        self.assertEqual(done.result.response, "Tira")
+        self.assertEqual([s["id"] for s in done.result.sources], ["n1"])
 
 
 class StreamLLMTestCase(unittest.TestCase):

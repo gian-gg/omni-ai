@@ -15,6 +15,7 @@ from app.graph.nodes import (
     route_by_intent,
     stream_chat_reply,
 )
+from app.graph.nodes._llm_client import parse_json_object, strip_reasoning
 from app.graph.state import IntentType, OrchestratorState
 
 # Number of trailing conversation messages forwarded to the LLM. Bounds token
@@ -145,21 +146,53 @@ def stream_orchestrator(
         yield StreamDone(result=_finalize(state, tokens))
         return
 
-    # Chat: stream prose deltas. Streaming uses plain text, so every retrieved
-    # note is treated as a candidate source (no LLM-filtered used_source_ids).
-    chunks: list[str] = []
+    # Chat: stream prose deltas. Despite the plain-text prompt, the model
+    # sometimes appends a trailing JSON object (e.g. {"used_source_ids": [...]})
+    # after the reply. We withhold everything from the first top-level '{' and,
+    # once the stream ends, drop it if it parses as JSON — honoring any
+    # used_source_ids it cites — or flush it as ordinary text if it doesn't.
+    prose: list[str] = []
+    trailer = ""
+    in_trailer = False
     for event in stream_chat_reply(state):
         if event.delta:
-            chunks.append(event.delta)
-            yield StreamTextDelta(text=event.delta)
+            if in_trailer:
+                trailer += event.delta
+            else:
+                head, brace, rest = event.delta.partition("{")
+                if head:
+                    prose.append(head)
+                    yield StreamTextDelta(text=head)
+                if brace:
+                    in_trailer = True
+                    trailer = brace + rest
         if event.done:
             tokens += event.tokens
 
-    reply = "".join(chunks).strip() or f"(LLM unavailable) You said: {clean_input}"
+    model_used_ids: list[str] | None = None
+    if in_trailer:
+        parsed = parse_json_object(trailer)
+        if isinstance(parsed, dict):
+            raw_ids = parsed.get("used_source_ids")
+            if isinstance(raw_ids, list):
+                model_used_ids = [s for s in raw_ids if isinstance(s, str)]
+        else:
+            # Not a JSON trailer after all — it belongs to the reply.
+            prose.append(trailer)
+            yield StreamTextDelta(text=trailer)
+
+    reply = (
+        strip_reasoning("".join(prose))
+        or f"(LLM unavailable) You said: {clean_input}"
+    )
     state["response"] = reply
-    state["used_source_ids"] = [
-        s["id"] for s in state.get("sources") or [] if s.get("id")
-    ]
+    retrieved_ids = [s["id"] for s in state.get("sources") or [] if s.get("id")]
+    if model_used_ids is not None:
+        # Honor the model's citation set, restricted to notes we actually retrieved.
+        retrieved = set(retrieved_ids)
+        state["used_source_ids"] = [i for i in model_used_ids if i in retrieved]
+    else:
+        state["used_source_ids"] = retrieved_ids
     yield StreamDone(result=_finalize(state, tokens))
 
 
