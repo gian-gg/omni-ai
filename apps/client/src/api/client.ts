@@ -99,6 +99,38 @@ async function apiFetch<T>(
   return res.json() as Promise<T>;
 }
 
+// ── Auth / Profile ─────────────────────────────────────────────────────────
+
+export type AuthenticatedUserResponse = {
+  id: string;
+  supabase_user_id: string;
+  email: string | null;
+  display_name: string | null;
+  currency: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type AuthMeResponse = {
+  user: AuthenticatedUserResponse;
+};
+
+export async function getMe(): Promise<AuthMeResponse> {
+  return apiFetch<AuthMeResponse>('/auth/me');
+}
+
+export type UserPreferencesUpdateRequest = {
+  display_name?: string | null;
+  currency?: string | null;
+};
+
+export async function updateProfile(payload: UserPreferencesUpdateRequest): Promise<AuthMeResponse> {
+  return apiFetch<AuthMeResponse>('/auth/me', {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  });
+}
+
 // ── Chat / Conversations ──────────────────────────────────────────────────
 
 export type ConversationItem = {

@@ -27,6 +27,7 @@ import {
   createTransaction,
   updateTransaction,
   deleteTransaction,
+  getMe,
   type TransactionItem,
   type TransactionUpdatePayload,
 } from '@/api/client';
@@ -35,9 +36,17 @@ import {
 
 type TabKey = 'all' | 'income' | 'expenses';
 
-function formatAmount(item: TransactionItem): string {
+function getCurrencySymbol(currency: string): string {
+  if (currency === 'EUR') return '€';
+  if (currency === 'GBP') return '£';
+  if (currency === 'PHP') return '₱';
+  if (currency === 'JPY') return '¥';
+  return '$';
+}
+
+function formatAmount(item: TransactionItem, currency: string = 'USD'): string {
   const sign = item.type === 'expense' ? '-' : '+';
-  return `${sign}$${item.amount.toFixed(2)}`;
+  return `${sign}${getCurrencySymbol(currency)}${item.amount.toFixed(2)}`;
 }
 
 function formatDate(iso: string): string {
@@ -62,8 +71,9 @@ const TABS: { key: TabKey; label: string }[] = [
 
 // ── Sub-components ──────────────────────────────────────────────────
 
-function BalanceCard({ income, expenses }: { income: number; expenses: number }) {
+function BalanceCard({ income, expenses, currency }: { income: number; expenses: number; currency: string }) {
   const balance = income - expenses;
+  const sym = getCurrencySymbol(currency);
   return (
     <LinearGradient
       colors={OmniGradient}
@@ -72,21 +82,22 @@ function BalanceCard({ income, expenses }: { income: number; expenses: number })
       style={styles.balanceCard}
     >
       <Text style={styles.balanceLabel}>Current balance</Text>
-      <Text style={styles.balanceAmount}>${balance.toFixed(2)}</Text>
+      <Text style={styles.balanceAmount}>{sym}{balance.toFixed(2)}</Text>
     </LinearGradient>
   );
 }
 
-function SummaryRow({ income, expenses }: { income: number; expenses: number }) {
+function SummaryRow({ income, expenses, currency }: { income: number; expenses: number; currency: string }) {
+  const sym = getCurrencySymbol(currency);
   return (
     <View style={styles.summaryRow}>
       <View style={styles.summaryItem}>
         <Text style={styles.summaryLabel}>Total expenses</Text>
-        <Text style={styles.summaryAmount}>${expenses.toFixed(2)}</Text>
+        <Text style={styles.summaryAmount}>{sym}{expenses.toFixed(2)}</Text>
       </View>
       <View style={styles.summaryItem}>
         <Text style={styles.summaryLabel}>Total income</Text>
-        <Text style={styles.summaryAmount}>${income.toFixed(2)}</Text>
+        <Text style={styles.summaryAmount}>{sym}{income.toFixed(2)}</Text>
       </View>
     </View>
   );
@@ -156,14 +167,15 @@ function SearchBar({
 
 function TransactionCard({
   item,
+  currency,
   onEdit,
 }: {
   item: TransactionItem;
+  currency: string;
   onEdit: () => void;
 }) {
   const tags: string[] = [];
   if (item.category) tags.push(item.category);
-  if (item.currency !== 'USD') tags.push(item.currency);
 
   return (
     <Pressable
@@ -189,7 +201,7 @@ function TransactionCard({
         </View>
         <View style={styles.txRight}>
           <Text style={[styles.txAmount, item.type === 'income' && { color: '#047857' }]}>
-            {formatAmount(item)}
+            {formatAmount(item, currency)}
           </Text>
           <View style={[styles.statusBadge, { backgroundColor: item.type === 'income' ? '#ECFDF5' : '#FEF2F2' }]}>
             <Text style={[styles.statusBadgeText, { color: item.type === 'income' ? '#047857' : '#B91C1C' }]}>
@@ -214,6 +226,7 @@ function TransactionCard({
 
 function EditTransactionModal({
   item,
+  currency,
   visible,
   onClose,
   onSave,
@@ -221,6 +234,7 @@ function EditTransactionModal({
   isAdding,
 }: {
   item: TransactionItem | null;
+  currency: string;
   visible: boolean;
   onClose: () => void;
   onSave: (id: string | null, payload: TransactionUpdatePayload) => void;
@@ -298,7 +312,7 @@ function EditTransactionModal({
                 styles.modalAmountText,
                 editFields.type === 'income' ? { color: '#047857' } : { color: OmniColors.ink },
               ]}>
-                {editFields.type === 'expense' ? '-' : '+'}${(editFields.amount || 0).toFixed(2)}
+                {editFields.type === 'expense' ? '-' : '+'}{getCurrencySymbol(currency)}{(editFields.amount || 0).toFixed(2)}
               </Text>
             </View>
 
@@ -344,7 +358,7 @@ function EditTransactionModal({
               }}
             />
 
-            <Text style={styles.editLabel}>Amount ($)</Text>
+            <Text style={styles.editLabel}>Amount ({getCurrencySymbol(currency)})</Text>
             <TextInput
               style={styles.editInput}
               keyboardType="numeric"
@@ -451,6 +465,15 @@ export default function TransactionsScreen() {
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [sortConfig, setSortConfig] = useState<{ by: 'date' | 'amount', asc: boolean }>({ by: 'date', asc: false });
   const [actionSheet, setActionSheet] = useState<{ visible: boolean, title: string, options: ActionOption[] }>({ visible: false, title: '', options: [] });
+  const [userCurrency, setUserCurrency] = useState<string>('USD');
+
+  useEffect(() => {
+    getMe()
+      .then(me => {
+        if (me.user.currency) setUserCurrency(me.user.currency);
+      })
+      .catch(console.error);
+  }, []);
 
   const fetchTransactions = useCallback(async (isRefresh = false) => {
     try {
@@ -588,6 +611,7 @@ export default function TransactionsScreen() {
         renderItem={({ item }) => (
           <TransactionCard
             item={item}
+            currency={userCurrency}
             onEdit={() => setEditingItem(item)}
           />
         )}
@@ -608,8 +632,8 @@ export default function TransactionsScreen() {
 
             {/* Overview cards */}
             <View style={styles.overviewSection}>
-              <BalanceCard income={totalIncome} expenses={totalExpenses} />
-              <SummaryRow income={totalIncome} expenses={totalExpenses} />
+              <BalanceCard income={totalIncome} expenses={totalExpenses} currency={userCurrency} />
+              <SummaryRow income={totalIncome} expenses={totalExpenses} currency={userCurrency} />
             </View>
 
             {/* Tabs + Search */}
@@ -655,6 +679,7 @@ export default function TransactionsScreen() {
 
       <EditTransactionModal
         item={editingItem}
+        currency={userCurrency}
         visible={editingItem !== null || isAdding}
         isAdding={isAdding}
         onClose={() => {
