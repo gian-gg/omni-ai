@@ -27,3 +27,6 @@ class User(TimestampMixin, Base):
         nullable=True,
         index=True,
     )
+    display_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    # ISO 4217 code; default currency applied when capturing transactions.
+    currency: Mapped[str | None] = mapped_column(String(3), nullable=True)

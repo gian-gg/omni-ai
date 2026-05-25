@@ -19,7 +19,9 @@ from app.main import app
 from app.models import Transaction, User  # noqa: F401 — ensure metadata is populated
 
 
-def _build_authenticated_user(user_id: str = "local-user-123") -> AuthenticatedUser:
+def _build_authenticated_user(
+    user_id: str = "local-user-123", currency: str | None = None
+) -> AuthenticatedUser:
     return AuthenticatedUser(
         claims=VerifiedTokenClaims(
             subject=f"supabase-{user_id}",
@@ -33,6 +35,7 @@ def _build_authenticated_user(user_id: str = "local-user-123") -> AuthenticatedU
             id=user_id,
             supabase_user_id=f"supabase-{user_id}",
             email=f"{user_id}@example.com",
+            currency=currency,
             created_at=datetime.now(UTC),
             updated_at=datetime.now(UTC),
         ),
@@ -111,6 +114,26 @@ class TransactionsEndpointsTestCase(unittest.TestCase):
         self.assertTrue(body["id"])
         self.assertEqual(body["amount"], 12.50)
         self.assertEqual(body["date"], "2026-05-23")
+
+    def test_post_applies_user_default_currency_when_omitted(self) -> None:
+        app.dependency_overrides[get_current_authenticated_user] = (
+            lambda: _build_authenticated_user("local-user-123", currency="PHP")
+        )
+        payload = self._payload()
+        payload.pop("currency")  # client omits currency
+        response = self.client.post("/api/v1/transactions", json=payload)
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.json()["currency"], "PHP")
+
+    def test_post_respects_explicit_currency_over_user_default(self) -> None:
+        app.dependency_overrides[get_current_authenticated_user] = (
+            lambda: _build_authenticated_user("local-user-123", currency="PHP")
+        )
+        response = self.client.post(
+            "/api/v1/transactions", json=self._payload(currency="EUR")
+        )
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.json()["currency"], "EUR")
 
     def test_list_returns_only_callers_transactions(self) -> None:
         # Caller transaction.

@@ -106,15 +106,46 @@ class ConversationMessagesResponse(BaseModel):
 
 
 class AuthenticatedUserResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: str
     supabase_user_id: str
     email: str | None
+    display_name: str | None = None
+    currency: str | None = None
     created_at: datetime
     updated_at: datetime
 
 
 class AuthMeResponse(BaseModel):
     user: AuthenticatedUserResponse
+
+
+class UserPreferencesUpdateRequest(BaseModel):
+    display_name: str | None = None
+    currency: str | None = None
+
+    @field_validator("display_name")
+    @classmethod
+    def validate_display_name(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        cleaned = value.strip()
+        if not cleaned:
+            raise ValueError("display_name must not be empty")
+        if len(cleaned) > 120:
+            raise ValueError("display_name must be at most 120 characters")
+        return cleaned
+
+    @field_validator("currency")
+    @classmethod
+    def validate_currency(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        cleaned = value.strip().upper()
+        if len(cleaned) != 3 or not cleaned.isalpha():
+            raise ValueError("currency must be a 3-letter ISO 4217 code")
+        return cleaned
 
 
 class AuthPasswordRequest(BaseModel):

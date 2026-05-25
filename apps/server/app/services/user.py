@@ -9,6 +9,7 @@ from app.models.user import User
 
 if TYPE_CHECKING:
     from app.core.auth import VerifiedTokenClaims
+    from app.v1.schemas import UserPreferencesUpdateRequest
 
 
 def upsert_user_from_claims(
@@ -38,3 +39,16 @@ def upsert_user_from_claims(
         db_session.refresh(existing_user)
 
     return existing_user
+
+
+def update_user_preferences(
+    db_session: Session,
+    user: User,
+    payload: UserPreferencesUpdateRequest,
+) -> User:
+    updates = payload.model_dump(exclude_unset=True)
+    for field, value in updates.items():
+        setattr(user, field, value)
+    db_session.commit()
+    db_session.refresh(user)
+    return user
