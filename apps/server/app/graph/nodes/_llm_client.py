@@ -106,6 +106,26 @@ def _extract_tool_calls(payload: object) -> list[dict[str, Any]]:
     return parsed
 
 
+_VALID_HISTORY_ROLES = frozenset({"user", "assistant"})
+
+
+def _history_messages(
+    history: list[dict[str, str]] | None,
+) -> list[dict[str, str]]:
+    if not history:
+        return []
+    messages: list[dict[str, str]] = []
+    for entry in history:
+        if not _is_string_key_dict(entry):
+            continue
+        role = entry.get("role")
+        content = entry.get("content")
+        if role not in _VALID_HISTORY_ROLES or not isinstance(content, str):
+            continue
+        messages.append({"role": role, "content": content})
+    return messages
+
+
 def call_llm(
     system_prompt: str,
     user_input: str,
@@ -113,6 +133,7 @@ def call_llm(
     json_mode: bool = False,
     temperature: float = 0.2,
     tools: list[dict[str, Any]] | None = None,
+    history: list[dict[str, str]] | None = None,
 ) -> LLMCallResult:
     """Call the configured LLM. Returns content + token usage; content is None on failure."""
     api_key = settings.llm_api_key
@@ -129,6 +150,7 @@ def call_llm(
         "model": settings.llm_model,
         "messages": [
             {"role": "system", "content": system_prompt},
+            *_history_messages(history),
             {"role": "user", "content": user_input},
         ],
         "temperature": temperature,

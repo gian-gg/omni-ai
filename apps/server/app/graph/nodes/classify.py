@@ -42,7 +42,12 @@ def _coerce_intent(value: object) -> IntentType:
 
 
 def classify_node(state: OrchestratorState) -> dict[str, Any]:
-    result = call_llm(CLASSIFY_SYSTEM_PROMPT, state["user_input"], json_mode=True)
+    result = call_llm(
+        CLASSIFY_SYSTEM_PROMPT,
+        state["user_input"],
+        json_mode=True,
+        history=state.get("history"),
+    )
     update: dict[str, Any] = {"intent": "chat", "tokens": result.tokens}
     if result.content is None:
         return update

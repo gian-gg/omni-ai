@@ -68,6 +68,7 @@ def query_node(state: OrchestratorState) -> dict[str, Any]:
         _build_system_prompt(),
         state["user_input"],
         tools=TOOL_SPECS,
+        history=state.get("history"),
     )
 
     if not result.tool_calls:
