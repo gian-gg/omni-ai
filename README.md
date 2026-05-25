@@ -16,10 +16,12 @@ apps/
 └── server/        # FastAPI + LangGraph backend
 
 packages/          # Reserved for shared code (currently empty)
-docs/              # Reserved for project-level documentation (currently empty)
+docs/              # Project-level documentation
 ```
 
-Backend architecture and auth notes live under `apps/server/docs/`.
+Project-level documentation lives under [`docs/`](docs/) — start at
+[`docs/README.md`](docs/README.md). Backend-specific architecture and auth notes
+also live under `apps/server/docs/`.
 
 ---
 
