@@ -15,10 +15,11 @@ import {
   Text,
   TextInput,
   View,
+  Keyboard,
 } from 'react-native';
 import { OmniDatePicker } from '@/components/ui/OmniDatePicker';
 import { OmniActionSheet, ActionOption } from '@/components/ui/OmniActionSheet';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { OmniColors, OmniFonts, OmniGradient } from '@/constants/theme';
 import {
@@ -226,6 +227,7 @@ function EditTransactionModal({
   onDelete: (id: string) => void;
   isAdding?: boolean;
 }) {
+  const insets = useSafeAreaInsets();
   const [editFields, setEditFields] = useState({
     type: 'expense' as 'income' | 'expense',
     amount: 0,
@@ -234,6 +236,17 @@ function EditTransactionModal({
     date: new Date(),
   });
   const [showDatePicker, setShowDatePicker] = useState(false);
+
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+
+  useEffect(() => {
+    const showSub = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow', (e) => setKeyboardHeight(e.endCoordinates.height));
+    const hideSub = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide', () => setKeyboardHeight(0));
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
 
   useEffect(() => {
     if (item) {
@@ -258,13 +271,15 @@ function EditTransactionModal({
   if (!item && !isAdding) return null;
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose} statusBarTranslucent>
       <Pressable style={styles.modalOverlay} onPress={onClose}>
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          style={{ width: '100%' }}
+        <Pressable 
+          style={[
+            styles.modalSheet, 
+            { paddingBottom: (insets.bottom > 0 ? insets.bottom + 24 : 24) + keyboardHeight, width: '100%' }
+          ]} 
+          onPress={() => {}}
         >
-          <Pressable style={styles.modalSheet} onPress={() => {}}>
             {/* Drag handle */}
             <View style={styles.modalHandle} />
 
@@ -379,8 +394,7 @@ function EditTransactionModal({
               </Pressable>
             </View>
           </Pressable>
-        </KeyboardAvoidingView>
-      </Pressable>
+        </Pressable>
     </Modal>
   );
 }

@@ -9,6 +9,7 @@ import {
   createNote,
 } from '@/api/client';
 import { MarkdownText } from '@/components/markdown-text';
+import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import {
   Animated,
   FlatList,
@@ -21,8 +22,9 @@ import {
   TextInput,
   TouchableWithoutFeedback,
   View,
+  Keyboard,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSpeechRecognitionEvent, ExpoSpeechRecognitionModule } from 'expo-speech-recognition';
 
 type Message =
@@ -744,8 +746,33 @@ export default function ChatScreen() {
     }
   }, [inputText, isSending]);
 
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const insets = useSafeAreaInsets();
+  
+  const tabBarHeight = useBottomTabBarHeight();
+  
+  const androidBottomPadding = Platform.OS === 'android' && keyboardHeight > 0 
+    ? Math.max(0, keyboardHeight - tabBarHeight + insets.bottom) 
+    : 0;
+
+  useEffect(() => {
+    if (Platform.OS !== 'android') return;
+    
+    const showSub = Keyboard.addListener('keyboardDidShow', (e) => {
+      setKeyboardHeight(e.endCoordinates.height);
+    });
+    const hideSub = Keyboard.addListener('keyboardDidHide', () => {
+      setKeyboardHeight(0);
+    });
+
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
+
   return (
-    <SafeAreaView style={styles.safe} edges={['top']}>
+    <SafeAreaView style={[styles.safe, { paddingBottom: androidBottomPadding }]} edges={['top']}>
       {/* Panel button */}
       <View style={styles.header}>
         <Pressable style={styles.panelBtn} onPress={openDrawer}>
@@ -755,8 +782,10 @@ export default function ChatScreen() {
 
       <KeyboardAvoidingView
         style={styles.flex}
-        behavior="padding"
-        keyboardVerticalOffset={0}>
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        enabled={Platform.OS === 'ios'}
+      >
+
         {/* Message list */}
         <FlatList
           ref={flatListRef}
@@ -823,21 +852,22 @@ export default function ChatScreen() {
             ))}
           </ScrollView>
         </View>
-      </KeyboardAvoidingView>
 
-      {/* History drawer (rendered last so it sits on top) */}
-      {drawerOpen && (
-        <HistoryDrawer
-          translateX={translateX}
-          overlayOpacity={overlayOpacity}
-          onClose={closeDrawer}
-          onNewChat={() => {
-            setMessages([]);
-            closeDrawer();
-          }}
-          historyItems={historyItems}
-        />
-      )}
+        </KeyboardAvoidingView>
+
+        {/* History drawer (rendered last so it sits on top) */}
+        {drawerOpen && (
+          <HistoryDrawer
+            translateX={translateX}
+            overlayOpacity={overlayOpacity}
+            onClose={closeDrawer}
+            onNewChat={() => {
+              setMessages([]);
+              closeDrawer();
+            }}
+            historyItems={historyItems}
+          />
+        )}
     </SafeAreaView>
   );
 }

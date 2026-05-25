@@ -15,10 +15,11 @@ import {
   KeyboardAvoidingView,
   Platform,
   Alert,
+  Keyboard,
 } from 'react-native';
 import { OmniDatePicker } from '@/components/ui/OmniDatePicker';
 import { OmniActionSheet, ActionOption } from '@/components/ui/OmniActionSheet';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { OmniColors, OmniFonts, OmniGradient } from '@/constants/theme';
 import {
@@ -224,6 +225,7 @@ function EditTodoModal({
   onDelete: (id: string) => void;
   isAdding?: boolean;
 }) {
+  const insets = useSafeAreaInsets();
   const [editFields, setEditFields] = useState({
     title: '',
     description: '',
@@ -231,6 +233,16 @@ function EditTodoModal({
     priority: 'medium' as Priority,
   });
   const [showDatePicker, setShowDatePicker] = useState(false);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+
+  useEffect(() => {
+    const showSub = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow', (e) => setKeyboardHeight(e.endCoordinates.height));
+    const hideSub = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide', () => setKeyboardHeight(0));
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
 
   useEffect(() => {
     if (item) {
@@ -253,13 +265,15 @@ function EditTodoModal({
   if (!item && !isAdding) return null;
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose} statusBarTranslucent>
       <Pressable style={styles.modalOverlay} onPress={onClose}>
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          style={{ width: '100%' }}
+        <Pressable 
+          style={[
+            styles.modalSheet, 
+            { paddingBottom: (insets.bottom > 0 ? insets.bottom + 24 : 24) + keyboardHeight, width: '100%' }
+          ]} 
+          onPress={() => {}}
         >
-          <Pressable style={styles.modalSheet} onPress={() => {}}>
             {/* Drag handle */}
             <View style={styles.modalHandle} />
 
@@ -352,8 +366,7 @@ function EditTodoModal({
               </Pressable>
             </View>
           </Pressable>
-        </KeyboardAvoidingView>
-      </Pressable>
+        </Pressable>
     </Modal>
   );
 }
