@@ -5,8 +5,9 @@ import { OmniGradient } from '@/constants/theme';
 import {
   listConversations,
   listConversationMessages,
-  createConversation,
-  appendMessage,
+  streamCreateConversation,
+  streamAppendMessage,
+  StreamCallbacks,
   deleteConversation,
   createTransaction,
   createTodo,
@@ -14,6 +15,7 @@ import {
   ConversationItem,
   MessageItem,
   getSuggestions,
+  getMe,
 } from '@/api/client';
 import { useFocusEffect } from 'expo-router';
 import { MarkdownText } from '@/components/markdown-text';
@@ -70,7 +72,15 @@ type StructuredRecord = {
   subtitle: string; // secondary detail line
 };
 
-function getRecordsFromStructured(intent: 'finance' | 'todo' | 'note', data: any): StructuredRecord[] {
+function getCurrencySymbol(currency: string | undefined | null): string {
+  if (currency === 'EUR') return '€';
+  if (currency === 'GBP') return '£';
+  if (currency === 'PHP') return '₱';
+  if (currency === 'JPY') return '¥';
+  return '$';
+}
+
+function getRecordsFromStructured(intent: 'finance' | 'todo' | 'note', data: any, userCurrency: string): StructuredRecord[] {
   if (!data) return [];
   switch (intent) {
     case 'finance':
@@ -78,7 +88,7 @@ function getRecordsFromStructured(intent: 'finance' | 'todo' | 'note', data: any
         {
           id: 'finance-1',
           label: 'Transaction',
-          title: `${data.type === 'expense' ? '-' : '+'}$${Number(data.amount || 0).toFixed(2)} ${data.description || ''}`,
+          title: `${data.type === 'expense' ? '-' : '+'}${getCurrencySymbol(data.currency || userCurrency)}${Number(data.amount || 0).toFixed(2)} ${data.description || ''}`,
           subtitle: `Category: ${data.category || 'None'}`,
         },
       ];
@@ -191,6 +201,7 @@ function OmniStructuredMessage({
   isCancelled,
   isEditing,
   time,
+  userCurrency,
   onConfirm,
   onCancel,
   onStartEdit,
@@ -207,6 +218,7 @@ function OmniStructuredMessage({
   isCancelled?: boolean;
   isEditing?: boolean;
   time: string;
+  userCurrency: string;
   onConfirm: (id: string) => void;
   onCancel: (id: string) => void;
   onStartEdit: (id: string) => void;
@@ -223,7 +235,7 @@ function OmniStructuredMessage({
     onSaveEdit(messageId, editFields);
   };
 
-  const records = getRecordsFromStructured(rawIntent, rawData);
+  const records = getRecordsFromStructured(rawIntent, rawData, userCurrency);
 
   const getSubspaceName = () => {
     if (rawIntent === 'finance') return 'Transactions';
@@ -300,7 +312,7 @@ function OmniStructuredMessage({
                 </Pressable>
               </View>
 
-              <Text style={styles.editLabel}>Amount ($)</Text>
+              <Text style={styles.editLabel}>Amount ({getCurrencySymbol(editFields.currency || userCurrency)})</Text>
               <TextInput
                 style={styles.editInput}
                 keyboardType="numeric"
@@ -477,6 +489,7 @@ function OmniStructuredMessage({
 
 function renderMessage(
   item: Message,
+  userCurrency: string,
   onConfirm: (id: string) => void,
   onCancel: (id: string) => void,
   onStartEdit: (id: string) => void,
@@ -503,6 +516,7 @@ function renderMessage(
           isCancelled={item.isCancelled}
           isEditing={item.isEditing}
           time={item.time}
+          userCurrency={userCurrency}
           onConfirm={onConfirm}
           onCancel={onCancel}
           onStartEdit={onStartEdit}
@@ -593,6 +607,7 @@ export default function ChatScreen() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [historyItems, setHistoryItems] = useState<HistoryItem[]>([]);
   const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
+  const [userCurrency, setUserCurrency] = useState<string>('USD');
 
   const [inputText, setInputText] = useState('');
   const [isSending, setIsSending] = useState(false);
@@ -618,6 +633,8 @@ export default function ChatScreen() {
           if (res.suggestions && res.suggestions.length > 0) {
             setSuggestions(res.suggestions);
           }
+          const me = await getMe();
+          if (me.user.currency) setUserCurrency(me.user.currency);
         } catch (err) {
           console.error("Failed to load suggestions", err);
         } finally {
@@ -809,36 +826,68 @@ export default function ChatScreen() {
     const now = new Date();
     const time = now.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
     const userMsgId = `user-${Date.now()}`;
+    const assistantMsgId = `assistant-${Date.now()}`;
 
     const userMsg: Message = { id: userMsgId, type: 'user', text, time };
-    setMessages((prev) => [...prev, userMsg]);
+    const initialOmniMsg: Message = { id: assistantMsgId, type: 'omni', text: '', time };
+    
+    setMessages((prev) => [...prev, userMsg, initialOmniMsg]);
     setInputText('');
     setIsSending(true);
 
-    try {
-      let assistantMsgItem: MessageItem;
-      
-      if (currentConversationId) {
-        assistantMsgItem = await appendMessage(currentConversationId, text);
-      } else {
-        const res = await createConversation(text);
-        setCurrentConversationId(res.conversation.id);
-        assistantMsgItem = res.message;
+    let activeConversationId = currentConversationId;
+
+    const callbacks: StreamCallbacks = {
+      onEvent: (event) => {
+        if (event.event === 'meta') {
+          if (!activeConversationId && event.data.conversation_id) {
+            setCurrentConversationId(event.data.conversation_id);
+            activeConversationId = event.data.conversation_id;
+            
+            setHistoryItems((prev) => {
+               if (prev.find(h => h.id === event.data.conversation_id)) return prev;
+               return [{
+                 id: event.data.conversation_id,
+                 title: event.data.title || text,
+                 preview: text,
+                 date: new Date().toLocaleDateString(),
+                 active: true
+               }, ...prev.map(h => ({ ...h, active: false }))];
+            });
+          }
+        } else if (event.event === 'delta') {
+          setMessages((prev) => prev.map((m) => {
+            if (m.id === assistantMsgId && m.type === 'omni') {
+              return { ...m, text: m.text + (event.data.text || '') };
+            }
+            return m;
+          }));
+        } else if (event.event === 'message') {
+          const omniMsg = mapMessageItemToMessage(event.data, false);
+          setMessages((prev) => prev.map((m) => m.id === assistantMsgId ? { ...omniMsg, id: assistantMsgId } : m));
+        }
+      },
+      onError: (err) => {
+        const errMsg: Message = {
+          id: `err-${Date.now()}`,
+          type: 'omni',
+          text: `Something went wrong — ${err instanceof Error ? err.message : String(err)}`,
+          time: new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }),
+        };
+        setMessages((prev) => [...prev, errMsg]);
+        setIsSending(false);
+      },
+      onClose: () => {
+        setIsSending(false);
       }
-      
-      const omniMsg = mapMessageItemToMessage(assistantMsgItem, false);
-      setMessages((prev) => [...prev, omniMsg]);
-    } catch (err) {
-      const errMsg: Message = {
-        id: `err-${Date.now()}`,
-        type: 'omni',
-        text: `Something went wrong — ${err instanceof Error ? err.message : 'unknown error'}`,
-        time: new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }),
-      };
-      setMessages((prev) => [...prev, errMsg]);
-    } finally {
-      setIsSending(false);
+    };
+
+    if (activeConversationId) {
+      streamAppendMessage(activeConversationId, text, callbacks);
+    } else {
+      streamCreateConversation(text, callbacks);
     }
+
   }, [inputText, isSending, currentConversationId]);
 
   const [keyboardHeight, setKeyboardHeight] = useState(0);
@@ -889,6 +938,7 @@ export default function ChatScreen() {
           renderItem={({ item }) =>
             renderMessage(
               item,
+              userCurrency,
               onConfirmStructured,
               onCancelStructured,
               onStartEditStructured,
