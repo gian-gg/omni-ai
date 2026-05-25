@@ -13,6 +13,7 @@ import {
   createNote,
   ConversationItem,
   MessageItem,
+  getSuggestions,
 } from '@/api/client';
 import { useFocusEffect } from 'expo-router';
 import { MarkdownText } from '@/components/markdown-text';
@@ -31,6 +32,7 @@ import {
   TouchableWithoutFeedback,
   View,
   Keyboard,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSpeechRecognitionEvent, ExpoSpeechRecognitionModule } from 'expo-speech-recognition';
@@ -604,6 +606,28 @@ export default function ChatScreen() {
     setActionSheetVisible(true);
   };
 
+  const [suggestions, setSuggestions] = useState<string[]>(['Add receipt photo', 'Log quick note', 'Create reminder']);
+  const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(true);
+
+  useFocusEffect(
+    useCallback(() => {
+      async function fetchSuggestions() {
+        setIsLoadingSuggestions(true);
+        try {
+          const res = await getSuggestions();
+          if (res.suggestions && res.suggestions.length > 0) {
+            setSuggestions(res.suggestions);
+          }
+        } catch (err) {
+          console.error("Failed to load suggestions", err);
+        } finally {
+          setIsLoadingSuggestions(false);
+        }
+      }
+      fetchSuggestions();
+    }, [])
+  );
+
   // Fetch conversations history
   useFocusEffect(
     useCallback(() => {
@@ -916,11 +940,18 @@ export default function ChatScreen() {
             horizontal
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.chipsRow}>
-            {['Add receipt photo', 'Log quick note', 'Create reminder'].map((chip) => (
-              <Pressable key={chip} style={styles.chip}>
-                <Text style={styles.chipText}>{chip}</Text>
-              </Pressable>
-            ))}
+            {isLoadingSuggestions ? (
+              <View style={[styles.chip, { flexDirection: 'row', alignItems: 'center', gap: 6, opacity: 0.7 }]}>
+                <ActivityIndicator size={12} color="#71717A" />
+                <Text style={styles.chipText}>Loading suggestions...</Text>
+              </View>
+            ) : (
+              suggestions.map((chip) => (
+                <Pressable key={chip} style={styles.chip} onPress={() => setInputText(chip)}>
+                  <Text style={styles.chipText}>{chip}</Text>
+                </Pressable>
+              ))
+            )}
           </ScrollView>
         </View>
 

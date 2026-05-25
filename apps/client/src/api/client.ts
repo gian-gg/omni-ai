@@ -161,6 +161,18 @@ export async function deleteConversation(conversationId: string): Promise<void> 
   });
 }
 
+// ── Suggestions ─────────────────────────────────────────────────────────
+
+export type SuggestionsResponse = {
+  suggestions: string[];
+  generated_at: string;
+  cached: boolean;
+};
+
+export async function getSuggestions(): Promise<SuggestionsResponse> {
+  return apiFetch<SuggestionsResponse>('/suggestions');
+}
+
 /**
  * Send a plain-text prompt to the orchestrator and get a single response.
  * No streaming — just a direct POST → JSON round-trip.
