@@ -1,1 +1,41 @@
-.DS_STORE
+# --- OS ---
+.DS_Store
+Thumbs.db
+
+# --- Secrets / env ---
+.env
+.env.*
+!.env.example
+
+# --- Node / Bun (apps/client) ---
+node_modules/
+bun.lockb
+npm-debug.log*
+yarn-error.log*
+.expo/
+dist/
+web-build/
+*.tsbuildinfo
+
+# --- Expo / EAS ---
+.expo-shared/
+*.orig.*
+ios/
+android/
+
+# --- Python (apps/server) ---
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# --- Editors / tooling ---
+.idea/
+.vscode/
+*.log
