@@ -1,5 +1,5 @@
 from datetime import date as _date, datetime
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -31,52 +31,65 @@ class NoteData(BaseModel):
     date: _date | None = None
 
 
-MAX_HISTORY_MESSAGES = 50
+def _validate_prompt(value: str) -> str:
+    cleaned_value = value.strip()
+    if not cleaned_value:
+        raise ValueError("prompt must not be empty")
+    return cleaned_value
 
 
-class ChatMessage(BaseModel):
-    role: Literal["user", "assistant"]
-    content: str = Field(..., min_length=1, max_length=10_000)
-
-
-class ChatRequest(BaseModel):
+class ConversationCreateRequest(BaseModel):
     prompt: str = Field(..., min_length=1, max_length=10_000)
-    history: list[ChatMessage] = Field(
-        default_factory=list, max_length=MAX_HISTORY_MESSAGES
-    )
 
     @field_validator("prompt")
     @classmethod
     def validate_prompt(cls, value: str) -> str:
-        cleaned_value = value.strip()
-        if not cleaned_value:
-            raise ValueError("prompt must not be empty")
-        return cleaned_value
+        return _validate_prompt(value)
 
 
-class ChatSource(BaseModel):
+class MessageCreateRequest(BaseModel):
+    prompt: str = Field(..., min_length=1, max_length=10_000)
+
+    @field_validator("prompt")
+    @classmethod
+    def validate_prompt(cls, value: str) -> str:
+        return _validate_prompt(value)
+
+
+class ConversationResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: str
-    title: str | None = None
-    similarity: float
+    title: str
+    created_at: datetime
+    updated_at: datetime
 
 
-class ToolCall(BaseModel):
-    id: str = ""
-    name: str
-    args: dict[str, object] = Field(default_factory=dict)
-    summary: str = ""
+class MessageResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    conversation_id: str
+    role: Literal["user", "assistant"]
+    content: str
+    details: dict[str, Any] | None = None
+    created_at: datetime
 
 
-class ChatResponse(BaseModel):
-    intent: IntentType
-    response: str
-    complete_response: str | None = None
-    cancelled_response: str | None = None
-    data: FinanceData | TodoData | NoteData | None = None
-    tokens: int = 0
-    datetime: datetime
-    sources: list[ChatSource] = Field(default_factory=list)
-    tool_calls: list[ToolCall] = Field(default_factory=list)
+class ConversationCreateResponse(BaseModel):
+    conversation: ConversationResponse
+    message: MessageResponse
+
+
+class ConversationListResponse(BaseModel):
+    items: list[ConversationResponse]
+    total: int
+    limit: int
+    offset: int
+
+
+class ConversationMessagesResponse(BaseModel):
+    items: list[MessageResponse]
 
 
 class AuthenticatedUserResponse(BaseModel):
