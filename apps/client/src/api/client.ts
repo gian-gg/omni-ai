@@ -99,24 +99,75 @@ async function apiFetch<T>(
   return res.json() as Promise<T>;
 }
 
-// ── Chat ────────────────────────────────────────────────────────────
+// ── Chat / Conversations ──────────────────────────────────────────────────
 
-export type ChatResponse = {
-  intent: 'finance' | 'todo' | 'note' | 'chat';
-  response: string;
-  complete_response: string | null;
-  cancelled_response: string | null;
-  data: any | null;
-  tokens: number;
-  datetime: string;
+export type ConversationItem = {
+  id: string;
+  title: string;
+  created_at: string;
+  updated_at: string;
 };
+
+export type MessageItem = {
+  id: string;
+  conversation_id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  details: any | null;
+  created_at: string;
+};
+
+export type ConversationCreateResponse = {
+  conversation: ConversationItem;
+  message: MessageItem;
+};
+
+export type ConversationListResponse = {
+  items: ConversationItem[];
+  total: number;
+  limit: number;
+  offset: number;
+};
+
+export type ConversationMessagesResponse = {
+  items: MessageItem[];
+};
+
+export async function listConversations(limit = 50, offset = 0): Promise<ConversationListResponse> {
+  return apiFetch<ConversationListResponse>(`/conversations?limit=${limit}&offset=${offset}`);
+}
+
+export async function listConversationMessages(conversationId: string): Promise<ConversationMessagesResponse> {
+  return apiFetch<ConversationMessagesResponse>(`/conversations/${conversationId}/messages`);
+}
+
+export async function createConversation(prompt: string): Promise<ConversationCreateResponse> {
+  return apiFetch<ConversationCreateResponse>('/conversations', {
+    method: 'POST',
+    body: JSON.stringify({ prompt }),
+  });
+}
+
+export async function appendMessage(conversationId: string, prompt: string): Promise<MessageItem> {
+  return apiFetch<MessageItem>(`/conversations/${conversationId}/messages`, {
+    method: 'POST',
+    body: JSON.stringify({ prompt }),
+  });
+}
+
+export async function deleteConversation(conversationId: string): Promise<void> {
+  await apiFetch<void>(`/conversations/${conversationId}`, {
+    method: 'DELETE',
+  });
+}
 
 /**
  * Send a plain-text prompt to the orchestrator and get a single response.
  * No streaming — just a direct POST → JSON round-trip.
+ * @deprecated Use createConversation or appendMessage instead.
  */
-export async function sendMessage(prompt: string): Promise<ChatResponse> {
-  return apiFetch<ChatResponse>('/chat', {
+export async function sendMessage(prompt: string): Promise<any> {
+  return apiFetch<any>('/chat', {
     method: 'POST',
     body: JSON.stringify({ prompt }),
   });
