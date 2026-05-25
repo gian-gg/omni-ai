@@ -7,7 +7,15 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { OmniColors, OmniFonts, OmniGradient } from '@/constants/theme';
 import { Pressable } from 'react-native';
-import { listTransactions, listTodos, listNotes } from '@/api/client';
+import { getAnalyticsOverview, getMe, AnalyticsOverviewResponse } from '@/api/client';
+
+function getCurrencySymbol(currency: string): string {
+  if (currency === 'EUR') return '€';
+  if (currency === 'GBP') return '£';
+  if (currency === 'PHP') return '₱';
+  if (currency === 'JPY') return '¥';
+  return '$';
+}
 
 // ── Types ───────────────────────────────────────────────────────────
 
@@ -25,26 +33,6 @@ type SpaceBreakdown = {
   progress: number;
   useGradient?: boolean;
 };
-
-// ── Static data (swap with API later) ───────────────────────────────
-
-const METRICS: Metric[] = [
-  {
-    label: 'Records captured',
-    value: '54',
-    subtitle: 'This week',
-  },
-  {
-    label: 'Confirmation rate',
-    value: '92%',
-    subtitle: 'Saved records vs drafted records',
-  },
-  {
-    label: 'Average confirmation time',
-    value: '1m 18s',
-    subtitle: 'From draft creation to confirm',
-  },
-];
 
 // ── Sub-components ──────────────────────────────────────────────────
 
@@ -108,66 +96,74 @@ function BreakdownBar({ item }: { item: SpaceBreakdown }) {
 export default function AnalyticsScreen() {
   const router = useRouter();
 
-  const [counts, setCounts] = useState<{
-    transactions: number | null;
-    todos: number | null;
-    thoughts: number | null;
-  }>({
-    transactions: null,
-    todos: null,
-    thoughts: null,
-  });
+  const [overview, setOverview] = useState<AnalyticsOverviewResponse | null>(null);
+  const [userCurrency, setUserCurrency] = useState<string>('USD');
 
   useFocusEffect(
     useCallback(() => {
-      async function fetchCounts() {
+      async function fetchAnalytics() {
         try {
-          const [txRes, todoRes, noteRes] = await Promise.all([
-            listTransactions(1, 0),
-            listTodos(1, 0),
-            listNotes(1, 0)
-          ]);
+          const res = await getAnalyticsOverview();
+          setOverview(res);
           
-          setCounts({
-            transactions: txRes.total,
-            todos: todoRes.total,
-            thoughts: noteRes.total,
-          });
+          const me = await getMe();
+          if (me.user.currency) setUserCurrency(me.user.currency);
         } catch (err) {
-          console.error('Failed to fetch analytics space counts', err);
+          console.error('Failed to fetch analytics', err);
         }
       }
       
-      fetchCounts();
+      fetchAnalytics();
     }, [])
   );
 
-  // Calculate total to determine progress bar percentages
-  const tCount = counts.transactions || 0;
-  const doCount = counts.todos || 0;
-  const thCount = counts.thoughts || 0;
+  const tCount = overview?.transaction_count || 0;
+  const doCount = overview?.open_todos || 0;
+  const thCount = overview?.total_notes || 0;
   const total = tCount + doCount + thCount;
 
   const spaceBreakdown: SpaceBreakdown[] = [
     { 
       id: 'transactions',
       label: 'Transactions', 
-      value: counts.transactions === null ? '...' : String(tCount), 
+      value: overview ? String(tCount) : '...', 
       progress: total > 0 ? tCount / total : 0, 
       useGradient: true 
     },
     { 
       id: 'todos',
       label: 'To-Dos',       
-      value: counts.todos === null ? '...' : String(doCount),  
+      value: overview ? String(doCount) : '...',  
       progress: total > 0 ? doCount / total : 0 
     },
     { 
       id: 'thoughts',
       label: 'Thoughts',     
-      value: counts.thoughts === null ? '...' : String(thCount), 
+      value: overview ? String(thCount) : '...', 
       progress: total > 0 ? thCount / total : 0 
     },
+  ];
+
+  const metrics: Metric[] = overview ? [
+    {
+      label: 'Net Balance',
+      value: `${overview.net_balance < 0 ? '-' : ''}${getCurrencySymbol(userCurrency)}${Math.abs(overview.net_balance).toFixed(2)}`,
+      subtitle: 'Across all transactions',
+    },
+    {
+      label: 'Pending Tasks',
+      value: String(overview.open_todos),
+      subtitle: `${overview.overdue_todos} overdue`,
+    },
+    {
+      label: 'Total Notes',
+      value: String(overview.total_notes),
+      subtitle: 'Thoughts & records captured',
+    },
+  ] : [
+    { label: 'Net Balance', value: '...', subtitle: 'Loading...' },
+    { label: 'Pending Tasks', value: '...', subtitle: 'Loading...' },
+    { label: 'Total Notes', value: '...', subtitle: 'Loading...' },
   ];
 
   return (
@@ -186,7 +182,7 @@ export default function AnalyticsScreen() {
         {/* Key Metrics */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Key Metrics</Text>
-          {METRICS.map((m) => (
+          {metrics.map((m) => (
             <MetricCard key={m.label} metric={m} />
           ))}
         </View>

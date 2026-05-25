@@ -252,6 +252,20 @@ export type TransactionItem = {
   updated_at: string;
 };
 
+// ── Analytics ────────────────────────────────────────────────────────
+
+export type AnalyticsOverviewResponse = {
+  net_balance: number;
+  transaction_count: number;
+  open_todos: number;
+  overdue_todos: number;
+  total_notes: number;
+};
+
+export async function getAnalyticsOverview(): Promise<AnalyticsOverviewResponse> {
+  return apiFetch<AnalyticsOverviewResponse>('/analytics/overview');
+}
+
 export type TransactionListResponse = {
   items: TransactionItem[];
   total: number;

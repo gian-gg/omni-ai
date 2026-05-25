@@ -6,7 +6,15 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { OmniColors, OmniFonts, OmniGradient } from '@/constants/theme';
-import { listTransactions, listTodos, listNotes } from '@/api/client';
+import { getAnalyticsOverview, getMe, AnalyticsOverviewResponse } from '@/api/client';
+
+function getCurrencySymbol(currency: string): string {
+  if (currency === 'EUR') return '€';
+  if (currency === 'GBP') return '£';
+  if (currency === 'PHP') return '₱';
+  if (currency === 'JPY') return '¥';
+  return '$';
+}
 
 type SpaceCard = {
   id: 'transactions' | 'todos' | 'thoughts';
@@ -55,11 +63,7 @@ const SPACES: SpaceCard[] = [
   },
 ];
 
-const STATS: StatRow[] = [
-  { label: 'Records captured', value: '54', progress: 0.8 },
-  { label: 'Confirmation rate', value: '92%', progress: 0.92 },
-  { label: 'Avg confirm time', value: '1m 18s', progress: 0.66 },
-];
+
 
 function HeroBanner() {
   return (
@@ -80,9 +84,8 @@ function HeroBanner() {
   );
 }
 
-function SpaceCardItem({ space, count }: { space: SpaceCard; count: number | null }) {
+function SpaceCardItem({ space }: { space: SpaceCard }) {
   const router = useRouter();
-  const badgeText = count === null ? '...' : `${count} ${space.badgeSuffix}`;
 
   return (
     <Pressable
@@ -93,9 +96,6 @@ function SpaceCardItem({ space, count }: { space: SpaceCard; count: number | nul
         <View style={styles.cardTitleRow}>
           <MaterialIcons name={space.icon} size={16} color={OmniColors.charcoal} />
           <Text style={styles.cardTitle}>{space.title}</Text>
-        </View>
-        <View style={styles.badge}>
-          <Text style={styles.badgeText}>{badgeText}</Text>
         </View>
       </View>
       <Text style={styles.cardDesc}>{space.description}</Text>
@@ -112,19 +112,30 @@ function ProgressBar({ progress }: { progress: number }) {
   );
 }
 
-function AnalyticsCard() {
+
+
+function AnalyticsCard({ overview }: { overview: AnalyticsOverviewResponse | null }) {
   const router = useRouter();
+  const total = overview ? overview.transaction_count + overview.open_todos + overview.total_notes : 0;
+  
+  const stats: StatRow[] = overview ? [
+    { label: 'Transactions', value: String(overview.transaction_count), progress: total > 0 ? overview.transaction_count / total : 0 },
+    { label: 'Open To-Dos', value: String(overview.open_todos), progress: total > 0 ? overview.open_todos / total : 0 },
+    { label: 'Total Notes', value: String(overview.total_notes), progress: total > 0 ? overview.total_notes / total : 0 },
+  ] : [
+    { label: 'Transactions', value: '...', progress: 0 },
+    { label: 'Open To-Dos', value: '...', progress: 0 },
+    { label: 'Total Notes', value: '...', progress: 0 },
+  ];
+
   return (
     <View style={styles.card}>
       <View style={styles.cardHeader}>
-        <Text style={styles.cardTitle}>This week</Text>
-        <View style={styles.badge}>
-          <Text style={styles.badgeTextAccent}>+12%</Text>
-        </View>
+        <Text style={styles.cardTitle}>Overview</Text>
       </View>
 
       <View style={styles.statsBlock}>
-        {STATS.map((stat) => (
+        {stats.map((stat) => (
           <View key={stat.label} style={styles.statRow}>
             <View style={styles.statLabelRow}>
               <Text style={styles.statLabel}>{stat.label}</Text>
@@ -152,39 +163,23 @@ function AnalyticsCard() {
 export default function SpacesScreen() {
   const router = useRouter();
   
-  const [counts, setCounts] = useState<{
-    transactions: number | null;
-    todos: number | null;
-    thoughts: number | null;
-  }>({
-    transactions: null,
-    todos: null,
-    thoughts: null,
-  });
+  const [overview, setOverview] = useState<AnalyticsOverviewResponse | null>(null);
+  const [userCurrency, setUserCurrency] = useState<string>('USD');
 
   useFocusEffect(
     useCallback(() => {
-      async function fetchCounts() {
+      async function fetchOverview() {
         try {
-          // Fetch just 1 item from each endpoint simply to get the total metadata
-          const [txRes, todoRes, noteRes] = await Promise.all([
-            listTransactions(1, 0),
-            listTodos(1, 0),
-            listNotes(1, 0)
-          ]);
-          
-          setCounts({
-            transactions: txRes.total,
-            todos: todoRes.total,
-            thoughts: noteRes.total,
-          });
+          const res = await getAnalyticsOverview();
+          setOverview(res);
+          const me = await getMe();
+          if (me.user.currency) setUserCurrency(me.user.currency);
         } catch (err) {
           console.error('Failed to fetch space counts', err);
-          // On error, leave as null to show "..." or set to 0. 
         }
       }
       
-      fetchCounts();
+      fetchOverview();
     }, [])
   );
 
@@ -200,7 +195,7 @@ export default function SpacesScreen() {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Specific Spaces</Text>
           {SPACES.map((s) => (
-            <SpaceCardItem key={s.id} space={s} count={counts[s.id]} />
+            <SpaceCardItem key={s.id} space={s} />
           ))}
         </View>
 
@@ -212,7 +207,7 @@ export default function SpacesScreen() {
               <Text style={styles.sectionLink}>Open full stats</Text>
             </Pressable>
           </View>
-          <AnalyticsCard />
+          <AnalyticsCard overview={overview} />
         </View>
       </ScrollView>
     </SafeAreaView>
