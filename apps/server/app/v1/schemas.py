@@ -304,3 +304,48 @@ class NoteSearchResult(NoteResponse):
 
 class NoteSearchResponse(BaseModel):
     items: list[NoteSearchResult]
+
+
+class AnalyticsBreakdown(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    group: str | None
+    value: float
+
+
+class FinanceAnalyticsResponse(BaseModel):
+    income: float
+    expense: float
+    net: float
+    transaction_count: int
+    by_category: list[AnalyticsBreakdown]
+    by_type: list[AnalyticsBreakdown]
+
+
+class TodosAnalyticsResponse(BaseModel):
+    total: int
+    open: int
+    done: int
+    overdue: int
+    by_priority: list[AnalyticsBreakdown]
+
+
+class AnalyticsTagCount(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    tag: str
+    count: int
+
+
+class NotesAnalyticsResponse(BaseModel):
+    total: int
+    recent: int
+    top_tags: list[AnalyticsTagCount]
+
+
+class AnalyticsOverviewResponse(BaseModel):
+    net_balance: float
+    transaction_count: int
+    open_todos: int
+    overdue_todos: int
+    total_notes: int

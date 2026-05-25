@@ -1,6 +1,7 @@
 from fastapi import APIRouter
 
 from app.v1 import (
+    analytics,
     auth,
     conversations,
     health,
@@ -39,4 +40,8 @@ router.include_router(
 router.include_router(
     suggestions.router,
     tags=["suggestions"],
+)
+router.include_router(
+    analytics.router,
+    tags=["analytics"],
 )
