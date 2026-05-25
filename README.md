@@ -29,9 +29,13 @@ also live under `apps/server/docs/`.
 
 - **Intent-routed chat** — every prompt is classified into `finance`, `todo`, `note`, or `chat` and routed through the LangGraph orchestrator.
 - **Structured extraction** — `finance`, `todo`, and `note` intents return a typed payload (amount, due date, tags, etc.) alongside a natural-language reply with explicit approve / cancel responses.
+- **Persistent, streaming conversations** — chats are stored server-side and replies stream token-by-token over Server-Sent Events. Multi-turn history grounds each reply (server-loaded history is capped to the most recent messages), and the client renders a conversation history drawer.
 - **Notes RAG** — notes are embedded with Gemini embeddings and stored in PostgreSQL via `pgvector`; relevant notes are retrieved on demand to ground chat replies, with cited sources returned to the client.
 - **Gated read-only tools** — the `chat` intent can query the authenticated user's transactions, todos, and notes through scoped tools. Tool calls are gated by intent so non-chat flows stay deterministic.
-- **Versioned REST API** — full CRUD for transactions, todos, and notes lives under `/api/v1`, alongside auth and the chat orchestrator.
+- **Data-grounded prompt suggestions** — a cached suggestions endpoint surfaces prompts derived from the user's own data to seed the next chat.
+- **Surface-level analytics** — analytics endpoints aggregate the user's transactions, todos, and notes for the client's spaces screens.
+- **User preferences** — `PATCH /auth/me` persists per-user preferences (e.g. preferred currency), which is injected into LLM system prompts and used for client-side formatting.
+- **Versioned REST API** — full CRUD for transactions, todos, and notes lives under `/api/v1`, alongside auth, conversations, suggestions, and analytics.
 
 ---
 
