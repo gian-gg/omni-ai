@@ -1,3 +1,5 @@
+<img src="assets/logo.png" alt="Omni AI Logo" width="64" />
+
 # Omni AI
 
 Omni is an AI-first system that converts natural language input into structured data — transactions, todos, and notes — through a single chat-style entrypoint.
