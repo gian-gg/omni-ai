@@ -1,5 +1,6 @@
 import * as SecureStore from 'expo-secure-store';
 import EventSource from 'react-native-sse';
+import { router } from 'expo-router';
 
 const API_BASE = 'https://omni-api.giann.dev/api/v1';
 
@@ -89,6 +90,9 @@ async function apiFetch<T>(
   }
 
   if (!res.ok) {
+    if (res.status === 401) {
+      router.replace('/welcome');
+    }
     const body = await res.text().catch(() => '');
     throw new Error(`API ${res.status}: ${body}`);
   }
