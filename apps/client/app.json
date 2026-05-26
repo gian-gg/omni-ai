@@ -1,10 +1,10 @@
 {
   "expo": {
-    "name": "client",
-    "slug": "client",
+    "name": "Omni",
+    "slug": "omni",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/icon.png",
+    "icon": "./assets/images/omni.png",
     "scheme": "client",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
@@ -17,10 +17,8 @@
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
-        "foregroundImage": "./assets/images/android-icon-foreground.png",
-        "backgroundImage": "./assets/images/android-icon-background.png",
-        "monochromeImage": "./assets/images/android-icon-monochrome.png"
+        "backgroundColor": "#FAFAFA",
+        "foregroundImage": "./assets/images/omni.png"
       },
       "edgeToEdgeEnabled": true,
       "softwareKeyboardLayoutMode": "resize",
@@ -32,17 +30,17 @@
     },
     "web": {
       "output": "static",
-      "favicon": "./assets/images/favicon.png"
+      "favicon": "./assets/images/omni.ico"
     },
     "plugins": [
       "expo-router",
       [
         "expo-splash-screen",
         {
-          "image": "./assets/images/splash-icon.png",
+          "image": "./assets/images/omni.png",
           "imageWidth": 200,
           "resizeMode": "contain",
-          "backgroundColor": "#ffffff",
+          "backgroundColor": "#FAFAFA",
           "dark": {
             "backgroundColor": "#000000"
           }
@@ -65,7 +63,7 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "66dc34a7-3f98-4577-a5e0-5413aea39f3f"
+        "projectId": "7555e21c-29d1-436e-b169-c330f61215eb"
       }
     }
   }
