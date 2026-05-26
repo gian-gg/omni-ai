@@ -223,6 +223,14 @@ export default function ProfileScreen() {
         </View>
 
         <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Help & Resources</Text>
+          <View style={styles.settingsGroup}>
+            <ActionItem label="Help Center & FAQ" icon="help-outline" onPress={() => router.push('/help')} />
+            <ActionItem label="Getting Started Guide" icon="play-circle-outline" onPress={() => router.push('/guide')} />
+          </View>
+        </View>
+
+        <View style={styles.section}>
           <Text style={styles.sectionTitle}>Account</Text>
           <View style={styles.settingsGroup}>
             <ActionItem label="Sign out" icon="logout" destructive onPress={handleSignOut} />
