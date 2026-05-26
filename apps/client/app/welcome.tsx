@@ -80,7 +80,7 @@ export default function WelcomeScreen() {
           style={styles.logoCard}
         >
           <Image
-            source={require('@/assets/images/logo.png')}
+            source={require('@/assets/images/omni.png')}
             style={styles.logoImage}
             contentFit="contain"
           />
