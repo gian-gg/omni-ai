@@ -198,6 +198,17 @@ export async function deleteConversation(conversationId: string): Promise<void> 
   });
 }
 
+export async function appendConversationMessage(
+  conversationId: string,
+  role: 'user' | 'assistant',
+  content: string,
+): Promise<MessageItem> {
+  return apiFetch<MessageItem>(`/conversations/${conversationId}/messages/append`, {
+    method: 'POST',
+    body: JSON.stringify({ role, content }),
+  });
+}
+
 export type ConvStreamEvent = {
   event: 'meta' | 'delta' | 'message';
   data: any;

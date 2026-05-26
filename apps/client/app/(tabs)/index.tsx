@@ -12,6 +12,7 @@ import {
   createTransaction,
   createTodo,
   createNote,
+  appendConversationMessage,
   ConversationItem,
   MessageItem,
   getSuggestions,
@@ -116,7 +117,22 @@ function getRecordsFromStructured(intent: 'finance' | 'todo' | 'note', data: any
   }
 }
 
-function mapMessageItemToMessage(m: MessageItem, isHistory: boolean = false): Message {
+const STATUS_PREFIX = '__OMNI_STATUS__';
+
+function isStatusMarker(m: MessageItem): boolean {
+  return m.role === 'assistant' && m.content.startsWith(STATUS_PREFIX);
+}
+
+function parseStatusMarker(content: string): { status: 'confirmed' | 'cancelled'; refId: string } | null {
+  const parts = content.split(':');
+  if (parts.length < 3 || parts[0] !== STATUS_PREFIX) return null;
+  const status = parts[1] as 'confirmed' | 'cancelled';
+  const refId = parts[2]; // safely handles if there's extra display text after
+  if (status !== 'confirmed' && status !== 'cancelled') return null;
+  return { status, refId };
+}
+
+function mapMessageItemToMessage(m: MessageItem): Message {
   const time = new Date(m.created_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
   const tokens = m.details?.tokens;
   if (m.role === 'user') {
@@ -131,7 +147,7 @@ function mapMessageItemToMessage(m: MessageItem, isHistory: boolean = false): Me
         rawData: m.details.data,
         completeResponse: m.details.complete_response,
         cancelledResponse: m.details.cancelled_response,
-        isConfirmed: isHistory, 
+        isConfirmed: false,
         isCancelled: false,
         isEditing: false,
         time,
@@ -141,6 +157,39 @@ function mapMessageItemToMessage(m: MessageItem, isHistory: boolean = false): Me
       return { id: m.id, type: 'omni', text: m.content, time, tokens };
     }
   }
+}
+
+/** Process raw messages from the server: apply status markers and filter them out. */
+function processHistoryMessages(items: MessageItem[]): Message[] {
+  // First pass: collect status markers
+  const statusMap = new Map<string, 'confirmed' | 'cancelled'>();
+  for (const m of items) {
+    if (isStatusMarker(m)) {
+      const parsed = parseStatusMarker(m.content);
+      if (parsed) statusMap.set(parsed.refId, parsed.status);
+    }
+  }
+
+  // Second pass: map messages, apply statuses, filter out markers
+  const messages: Message[] = [];
+  for (const m of items) {
+    if (isStatusMarker(m)) continue;
+    
+    const msg = mapMessageItemToMessage(m);
+    if (msg.type === 'omni-structured') {
+      const status = statusMap.get(msg.id);
+      if (status === 'confirmed') {
+        msg.isConfirmed = true;
+      } else if (status === 'cancelled') {
+        msg.isCancelled = true;
+      } else {
+        // No marker found — proposal was abandoned (left without acting)
+        msg.isCancelled = true;
+      }
+    }
+    messages.push(msg);
+  }
+  return messages;
 }
 
 function HeroCard() {
@@ -718,8 +767,7 @@ export default function ChatScreen() {
     setCurrentConversationId(id);
     try {
       const res = await listConversationMessages(id);
-      const formattedMessages = res.items.map(m => mapMessageItemToMessage(m, true));
-      setMessages(formattedMessages);
+      setMessages(processHistoryMessages(res.items));
     } catch (err) {
       console.error("Failed to load conversation messages", err);
       setMessages([]);
@@ -827,10 +875,19 @@ export default function ChatScreen() {
             : m,
         ),
       );
+
+      // Persist as a separate message via the append endpoint
+      if (currentConversationId) {
+        appendConversationMessage(
+          currentConversationId,
+          'assistant',
+          `${STATUS_PREFIX}:confirmed:${id}`,
+        ).catch((err) => console.error('Failed to persist confirm status', err));
+      }
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Failed to save data to Spaces.');
     }
-  }, []);
+  }, [currentConversationId]);
 
   const onCancelStructured = useCallback((id: string) => {
     setMessages((prev) =>
@@ -840,7 +897,16 @@ export default function ChatScreen() {
           : m,
       ),
     );
-  }, []);
+
+    // Persist as a separate message via the append endpoint
+    if (currentConversationId) {
+      appendConversationMessage(
+        currentConversationId,
+        'assistant',
+        `${STATUS_PREFIX}:cancelled:${id}`,
+      ).catch((err) => console.error('Failed to persist cancel status', err));
+    }
+  }, [currentConversationId]);
 
   const onStartEditStructured = useCallback((id: string) => {
     setMessages((prev) =>
@@ -908,8 +974,8 @@ export default function ChatScreen() {
             return m;
           }));
         } else if (event.event === 'message') {
-          const omniMsg = mapMessageItemToMessage(event.data, false);
-          setMessages((prev) => prev.map((m) => m.id === assistantMsgId ? { ...omniMsg, id: assistantMsgId } : m));
+          const omniMsg = mapMessageItemToMessage(event.data);
+          setMessages((prev) => prev.map((m) => m.id === assistantMsgId ? omniMsg : m));
         }
       },
       onError: (err) => {
